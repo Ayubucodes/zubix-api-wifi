@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import type { PrismaClient } from "@prisma/client";
 import { AppError } from "../../common/errors.js";
 import { generateOpaqueToken, hashPassword, sha256Hex, verifyPassword } from "../../common/crypto.js";
-import { loadAuthUser, type AuthUser } from "../../plugins/auth.js";
+import { loadAuthUser, type AuthUser } from "./auth-user.js";
 
 export interface SessionMeta {
   ipAddress?: string;
@@ -19,7 +19,7 @@ export interface TokenPair {
 export interface AuthServiceOptions {
   refreshTtlSeconds: number;
   accessTtlSeconds: number;
-  signAccessToken: (userId: string) => string;
+  signAccessToken: (userId: string) => string | Promise<string>;
 }
 
 /** Real Argon2 hash of random data, so unknown-email logins take as long as known-email logins. */
@@ -113,7 +113,7 @@ export class AuthService {
     }
 
     return {
-      accessToken: this.options.signAccessToken(stored.userId),
+      accessToken: await this.options.signAccessToken(stored.userId),
       refreshToken: next,
       tokenType: "Bearer",
       expiresIn: this.options.accessTtlSeconds,
@@ -148,7 +148,7 @@ export class AuthService {
       },
     });
     return {
-      accessToken: this.options.signAccessToken(userId),
+      accessToken: await this.options.signAccessToken(userId),
       refreshToken,
       tokenType: "Bearer",
       expiresIn: this.options.accessTtlSeconds,

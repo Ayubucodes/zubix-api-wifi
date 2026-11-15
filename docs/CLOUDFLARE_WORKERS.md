@@ -1,7 +1,11 @@
 # Deploying the API to Cloudflare Workers
 
-The Worker entry point adapts incoming requests to the existing Fastify routes. Prisma uses
-Neon's serverless PostgreSQL driver; this does not use D1.
+The Cloudflare Worker uses a Worker-native Hono API implementation and Prisma's Neon serverless
+PostgreSQL adapter. It does not use D1 or import the Node/Fastify server. The Node application
+continues to use Fastify through `src/server.ts`.
+
+The Worker routes are implemented separately in `src/worker-api.ts`; keep them aligned with the
+Fastify route modules when changing API behavior.
 
 ## Configure and deploy
 
@@ -41,8 +45,9 @@ Neon's serverless PostgreSQL driver; this does not use D1.
    npm run deploy
    ```
 
-The deployed health check is `/health`. For local Worker development, put the same environment
-values in an ignored `.dev.vars` file, then run `npm run dev:worker`.
+The deployed health check is `/health`; API documentation is at `/docs` and `/openapi.json`.
+For local Worker development, put the required environment values in an ignored `.dev.vars` file,
+then run `npm run dev:worker`.
 
 The build generates Prisma Client explicitly. If the deployment build reports that npm blocked
 required install scripts, review and approve only the required Prisma/Wrangler package scripts
@@ -55,5 +60,5 @@ using the npm command shown in the build log.
 - Argon2id is CPU-intensive. Workers Free allows 10 ms CPU per request; password login and
   account creation are likely to exceed that. Use Workers Paid, whose default CPU limit is
   30 seconds, and monitor Worker CPU time.
-- Fastify's in-memory rate-limit store is local to each Worker isolate. It is not a globally
-  shared rate limit; configure Cloudflare-level rate limiting for production protection.
+- The Worker rate-limit counters are in memory and local to each isolate. They are not globally
+  shared; configure Cloudflare-level rate limiting for production protection.
