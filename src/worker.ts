@@ -29,7 +29,7 @@ async function createApp(bindings: WorkerBindings): Promise<FastifyInstance> {
   const prisma = new PrismaClient({ adapter });
 
   try {
-    const app = await buildApp({ env, prisma });
+    const app = await buildApp({ env, prisma, logger: false });
     await app.ready();
     return app;
   } catch (error) {
