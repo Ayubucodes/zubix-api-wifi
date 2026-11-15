@@ -26,6 +26,19 @@ function createRuntime(timezone: string): WorkerRuntime {
 }
 
 describe("Cloudflare Worker API", () => {
+  it("shows API links at the root path", async () => {
+    const api = createWorkerApi(createRuntime("UTC"));
+
+    const response = await api.request("/");
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      name: "Test API",
+      message: "API is running",
+      links: { health: "/health", docs: "/docs", openapi: "/openapi.json" },
+    });
+  });
+
   it("serves health checks and binds each app to its own runtime", async () => {
     const first = createWorkerApi(createRuntime("Africa/Dar_es_Salaam"));
     const second = createWorkerApi(createRuntime("UTC"));

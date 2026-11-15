@@ -158,6 +158,15 @@ export function createWorkerApi(runtime: WorkerRuntime): Hono<ApiEnvironment> {
     entityType: z.string().trim().max(64).optional(),
   });
 
+  api.get("/", (context) => {
+    const { APP_NAME } = context.get("runtime").env;
+    return context.json({
+      name: APP_NAME,
+      message: "API is running",
+      links: { health: "/health", docs: "/docs", openapi: "/openapi.json" },
+    });
+  });
+
   api.get("/health", async (context) => {
     await context.get("runtime").prisma.$queryRaw`SELECT 1`;
     return context.json({ status: "ok", time: new Date().toISOString(), timezone: context.get("runtime").env.APP_TIMEZONE });
@@ -645,6 +654,7 @@ function errorResponse(status: number, code: string, message: string, details?: 
 }
 
 const openApiRoutes: Array<[string, string, string]> = [
+  ["GET", "/", "API status and links"],
   ["GET", "/health", "Database health check"],
   ["POST", "/api/v1/auth/login", "Sign in"],
   ["POST", "/api/v1/auth/refresh", "Rotate refresh token"],
