@@ -9,7 +9,7 @@ Documentation: https://docs.clickpesa.com
 
 Documented facts (checked against the official docs):
 
-- **No sandbox.** Every API call goes to production. Test with a small amount
+- **No sandbox.** Every API call goes to production. Test with a small amountt
   and your own phone only, once KYC is approved.
 - **KYC approval is required** before token generation works.
 - **Token:** `POST https://api.clickpesa.com/third-parties/generate-token` with
