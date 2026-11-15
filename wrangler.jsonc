@@ -6,7 +6,8 @@
   "compatibility_flags": ["nodejs_compat"],
   "vars": {
     "APP_ENV": "production",
-    "APP_TIMEZONE": "Africa/Dar_es_Salaam"
+    "APP_TIMEZONE": "Africa/Dar_es_Salaam",
+    "CORS_ORIGINS": "https://wifi.zubix.win"
   },
   "observability": {
     "enabled": true
