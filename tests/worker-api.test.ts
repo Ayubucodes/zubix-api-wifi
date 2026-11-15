@@ -6,6 +6,9 @@ import { createWorkerApi, type WorkerRuntime } from "../src/worker-api.js";
 function createRuntime(timezone: string): WorkerRuntime {
   const prisma = {
     $queryRaw: vi.fn().mockResolvedValue([{ "?column?": 1 }]),
+    user: {
+      findUnique: vi.fn().mockResolvedValue(null),
+    },
   } as unknown as PrismaClient;
 
   return {
@@ -27,9 +30,11 @@ function createRuntime(timezone: string): WorkerRuntime {
 
 describe("Cloudflare Worker API", () => {
   it("shows API links at the root path", async () => {
-    const api = createWorkerApi(createRuntime("UTC"));
+    const api = createWorkerApi();
 
-    const response = await api.request("/");
+    const response = await api.fetch(new Request("https://api.example/"), {
+      runtime: createRuntime("UTC"),
+    });
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({
@@ -40,11 +45,14 @@ describe("Cloudflare Worker API", () => {
   });
 
   it("serves health checks and binds each app to its own runtime", async () => {
-    const first = createWorkerApi(createRuntime("Africa/Dar_es_Salaam"));
-    const second = createWorkerApi(createRuntime("UTC"));
+    const api = createWorkerApi();
 
-    const firstResponse = await first.request("/health");
-    const secondResponse = await second.request("/health");
+    const firstResponse = await api.fetch(new Request("https://api.example/health"), {
+      runtime: createRuntime("Africa/Dar_es_Salaam"),
+    });
+    const secondResponse = await api.fetch(new Request("https://api.example/health"), {
+      runtime: createRuntime("UTC"),
+    });
 
     expect(firstResponse.status).toBe(200);
     await expect(firstResponse.json()).resolves.toMatchObject({
@@ -55,9 +63,11 @@ describe("Cloudflare Worker API", () => {
   });
 
   it("returns a JSON 404 for unknown paths", async () => {
-    const api = createWorkerApi(createRuntime("UTC"));
+    const api = createWorkerApi();
 
-    const response = await api.request("/not-a-route");
+    const response = await api.fetch(new Request("https://api.example/not-a-route"), {
+      runtime: createRuntime("UTC"),
+    });
 
     expect(response.status).toBe(404);
     await expect(response.json()).resolves.toEqual({
@@ -65,12 +75,32 @@ describe("Cloudflare Worker API", () => {
     });
   });
 
-  it("applies CORS to requests from configured origins", async () => {
-    const api = createWorkerApi(createRuntime("UTC"));
+  it("returns a handled unauthorized response for unknown login emails", async () => {
+    const api = createWorkerApi();
+    const response = await api.fetch(
+      new Request("https://api.example/api/v1/auth/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: "admin@zubix.local", password: "not-the-password" }),
+      }),
+      { runtime: createRuntime("UTC") },
+    );
 
-    const response = await api.request("/health", {
-      headers: { Origin: "https://portal.example" },
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toEqual({
+      error: { code: "UNAUTHORIZED", message: "Invalid email or password" },
     });
+  });
+
+  it("applies CORS to requests from configured origins", async () => {
+    const api = createWorkerApi();
+
+    const response = await api.fetch(
+      new Request("https://api.example/health", {
+        headers: { Origin: "https://portal.example" },
+      }),
+      { runtime: createRuntime("UTC") },
+    );
 
     expect(response.headers.get("access-control-allow-origin")).toBe("https://portal.example");
   });

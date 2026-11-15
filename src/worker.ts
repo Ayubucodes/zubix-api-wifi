@@ -9,19 +9,9 @@ interface WorkerBindings extends Record<string, string | undefined> {
   DATABASE_URL: string;
 }
 
-let apiPromise: Promise<ReturnType<typeof createWorkerApi>> | undefined;
+const api = createWorkerApi();
 
-function getApi(bindings: WorkerBindings): Promise<ReturnType<typeof createWorkerApi>> {
-  if (!apiPromise) {
-    apiPromise = createApi(bindings).catch((error: unknown) => {
-      apiPromise = undefined;
-      throw error;
-    });
-  }
-  return apiPromise;
-}
-
-function createApi(bindings: WorkerBindings): Promise<ReturnType<typeof createWorkerApi>> {
+function createRuntime(bindings: WorkerBindings): WorkerRuntime {
   const env = loadEnv(bindings);
   const prisma = new PrismaClient({
     adapter: new PrismaNeon({ connectionString: env.DATABASE_URL }),
@@ -55,13 +45,16 @@ function createApi(bindings: WorkerBindings): Promise<ReturnType<typeof createWo
         : null,
     accessTokenKey: new TextEncoder().encode(env.JWT_ACCESS_SECRET),
   };
-
-  return Promise.resolve(createWorkerApi(runtime));
+  return runtime;
 }
 
 export default {
   async fetch(request: Request, bindings: WorkerBindings): Promise<Response> {
-    const api = await getApi(bindings);
-    return api.fetch(request);
+    const runtime = createRuntime(bindings);
+    try {
+      return await api.fetch(request, { runtime });
+    } finally {
+      await runtime.prisma.$disconnect();
+    }
   },
 };

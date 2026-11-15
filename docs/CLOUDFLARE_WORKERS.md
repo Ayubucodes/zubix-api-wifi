@@ -55,10 +55,13 @@ using the npm command shown in the build log.
 
 ## Runtime considerations
 
-- Password hashes remain Argon2id and existing hashes remain verifiable. The Worker uses a
-  WebAssembly implementation instead of Node's native Argon2 addon.
-- Argon2id is CPU-intensive. Workers Free allows 10 ms CPU per request; password login and
-  account creation are likely to exceed that. Use Workers Paid, whose default CPU limit is
-  30 seconds, and monitor Worker CPU time.
+- Password hashes remain Argon2id and existing hashes remain verifiable. The Worker uses the
+  pure-JavaScript `@noble/hashes` implementation because Cloudflare Workers disallows runtime
+  compilation of the embedded WebAssembly used by `hash-wasm`.
+- Argon2id is CPU-intensive, especially in pure JavaScript. Workers Free allows 10 ms CPU per
+  request, so login and account creation are likely to exceed that. Use Workers Paid and monitor
+  CPU time.
+- The Worker creates and disconnects a Neon Prisma client for each request. Neon WebSocket pools
+  must not be reused across Worker request contexts.
 - The Worker rate-limit counters are in memory and local to each isolate. They are not globally
   shared; configure Cloudflare-level rate limiting for production protection.

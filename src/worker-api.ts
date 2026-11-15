@@ -39,21 +39,31 @@ export interface WorkerRuntime {
 }
 
 interface ApiEnvironment {
+  Bindings: {
+    runtime: WorkerRuntime;
+  };
   Variables: {
     runtime: WorkerRuntime;
     currentUser: AuthUser;
   };
 }
 
-export function createWorkerApi(runtime: WorkerRuntime): Hono<ApiEnvironment> {
+export function createWorkerApi(): Hono<ApiEnvironment> {
   const api = new Hono<ApiEnvironment>();
 
   api.use("*", async (context, next) => {
-    context.set("runtime", runtime);
+    context.set("runtime", context.env.runtime);
     await next();
   });
   api.use("*", secureHeaders());
-  api.use("*", cors({ origin: runtime.env.CORS_ORIGINS, credentials: true }));
+  api.use(
+    "*",
+    cors({
+      origin: (origin, context) =>
+        context.env.runtime.env.CORS_ORIGINS.includes(origin) ? origin : "",
+      credentials: true,
+    }),
+  );
 
   const loginBody = loginBodySchema;
   const refreshBody = refreshBodySchema;
@@ -311,15 +321,16 @@ export function createWorkerApi(runtime: WorkerRuntime): Hono<ApiEnvironment> {
     return context.json(await new PaymentsService(context.get("runtime").prisma, context.get("runtime").paymentProviders)
       .getByReference(reference));
   });
-  if (runtime.env.APP_ENV !== "production") {
-    payments.post("/dev/mock/:reference/complete", async (context) => {
-      const { reference } = parseOrThrow(paymentReferenceParam, context.req.param());
-      const { status } = parseOrThrow(mockCompleteBody, await requestJson(context));
-      const outcome = await new PaymentsService(context.get("runtime").prisma, context.get("runtime").paymentProviders)
-        .simulateMockCallback(reference, status);
-      return context.json({ outcome });
-    });
-  }
+  payments.post("/dev/mock/:reference/complete", async (context) => {
+    if (context.get("runtime").env.APP_ENV === "production") {
+      return errorResponse(404, "NOT_FOUND", "Route not found");
+    }
+    const { reference } = parseOrThrow(paymentReferenceParam, context.req.param());
+    const { status } = parseOrThrow(mockCompleteBody, await requestJson(context));
+    const outcome = await new PaymentsService(context.get("runtime").prisma, context.get("runtime").paymentProviders)
+      .simulateMockCallback(reference, status);
+    return context.json({ outcome });
+  });
   v1.route("/payments", payments);
 
   const publicRoutes = new Hono<ApiEnvironment>();
