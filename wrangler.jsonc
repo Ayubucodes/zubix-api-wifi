@@ -7,7 +7,7 @@
   "vars": {
     "APP_ENV": "production",
     "APP_TIMEZONE": "Africa/Dar_es_Salaam",
-    "CORS_ORIGINS": "https://wifi.zubix.win"
+    "CORS_ORIGINS": "https://wifi.zubix.win,https://admin.zubix.win"
   },
   "observability": {
     "enabled": true
