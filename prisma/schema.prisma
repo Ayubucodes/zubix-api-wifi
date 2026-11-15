@@ -1,0 +1,724 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum RoleName {
+  SUPER_ADMIN
+  ADMIN
+  MANAGER
+  CASHIER
+  SUPPORT
+}
+
+enum CustomerStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum PackageDurationUnit {
+  MINUTE
+  HOUR
+  DAY
+  WEEK
+  MONTH
+}
+
+enum PaymentProviderCode {
+  SELCOM
+  CLICKPESA
+  MOCK
+}
+
+enum PaymentStatus {
+  PENDING
+  PROCESSING
+  SUCCESS
+  FAILED
+  CANCELLED
+  EXPIRED
+  REFUNDED
+}
+
+enum SubscriptionStatus {
+  PENDING
+  ACTIVE
+  EXPIRED
+  SUSPENDED
+  CANCELLED
+}
+
+enum SubscriptionSource {
+  PAYMENT
+  VOUCHER
+  ADMIN
+}
+
+enum VoucherStatus {
+  ACTIVE
+  REVOKED
+  EXPIRED
+  EXHAUSTED
+}
+
+enum SoldChannel {
+  CASH
+  MOBILE_MONEY
+}
+
+enum WifiSessionStatus {
+  ACTIVE
+  EXPIRED
+  DISCONNECTED
+  FAILED
+}
+
+enum NetworkAuthorizationStatus {
+  PENDING
+  AUTHORIZED
+  REVOKED
+  FAILED
+}
+
+enum AccessPointStatus {
+  ONLINE
+  OFFLINE
+  UNKNOWN
+}
+
+enum NotificationChannel {
+  SMS
+  EMAIL
+  IN_APP
+}
+
+enum NotificationStatus {
+  QUEUED
+  SENT
+  FAILED
+}
+
+enum BackgroundJobStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+// ---------------------------------------------------------------------------
+// Authentication, users and RBAC
+// ---------------------------------------------------------------------------
+
+model User {
+  id           String        @id @default(uuid())
+  email        String        @unique
+  passwordHash String
+  fullName     String
+  isActive     Boolean       @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  roles        UserRole[]
+  refreshTokens RefreshToken[]
+  auditLogs    AuditLog[]
+}
+
+model Role {
+  id          String           @id @default(uuid())
+  name        RoleName         @unique
+  description String?
+  users       UserRole[]
+  permissions RolePermission[]
+}
+
+model Permission {
+  id          String           @id @default(uuid())
+  code        String           @unique
+  description String?
+  roles       RolePermission[]
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+}
+
+model UserRole {
+  userId     String
+  roleId     String
+  assignedAt DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role       Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+}
+
+model RefreshToken {
+  id          String    @id @default(uuid())
+  userId      String
+  tokenHash   String    @unique
+  expiresAt   DateTime
+  revokedAt   DateTime?
+  replacedById String?  @unique
+  userAgent   String?
+  ipAddress   String?
+  createdAt   DateTime  @default(now())
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  actorUserId String?
+  action      String
+  entityType  String
+  entityId    String?
+  metadata    Json?
+  ipAddress   String?
+  createdAt   DateTime @default(now())
+  actor       User?    @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId])
+  @@index([actorUserId])
+  @@index([createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Customers
+// ---------------------------------------------------------------------------
+
+model Customer {
+  id            String           @id @default(uuid())
+  fullName      String?
+  phoneNumber   String           @unique // normalized E.164 digits, e.g. 255712345678
+  email         String?
+  status        CustomerStatus   @default(ACTIVE)
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  profile       CustomerProfile?
+  devices       CustomerDevice[]
+  payments      Payment[]
+  subscriptions Subscription[]
+  sessions      WifiSession[]
+  notifications Notification[]
+  voucherRedemptions VoucherRedemption[]
+
+  @@index([status])
+}
+
+model CustomerProfile {
+  id         String   @id @default(uuid())
+  customerId String   @unique
+  notes      String?
+  preferredLanguage String @default("sw")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+}
+
+model CustomerDevice {
+  id           String    @id @default(uuid())
+  customerId   String?
+  macAddress   String    @unique // normalized uppercase AA:BB:CC:DD:EE:FF
+  lastIpAddress String?
+  lastSeenAt   DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  customer     Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  subscriptionDevices SubscriptionDevice[]
+  sessions     WifiSession[]
+
+  @@index([customerId])
+}
+
+// ---------------------------------------------------------------------------
+// Locations and network
+// ---------------------------------------------------------------------------
+
+model Location {
+  id           String         @id @default(uuid())
+  name         String
+  code         String         @unique
+  address      String?
+  timezone     String         @default("Africa/Dar_es_Salaam")
+  isActive     Boolean        @default(true)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  networkSites NetworkSite[]
+  accessPoints AccessPoint[]
+  packages     PackageLocation[]
+  subscriptions Subscription[]
+}
+
+model OmadaController {
+  id              String        @id @default(uuid())
+  name            String
+  baseUrl         String
+  username        String
+  encryptedPassword String      // AES-256-GCM ciphertext, never returned by the API
+  verifySsl       Boolean       @default(true)
+  lastTestedAt    DateTime?
+  lastTestStatus  String?
+  lastError       String?
+  isActive        Boolean       @default(true)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  sites           NetworkSite[]
+}
+
+model NetworkSite {
+  id              String          @id @default(uuid())
+  locationId      String
+  controllerId    String
+  omadaSiteId     String          // Omada site identifier on the controller
+  name            String
+  isActive        Boolean         @default(true)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  location        Location        @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  controller      OmadaController @relation(fields: [controllerId], references: [id], onDelete: Restrict)
+  accessPoints    AccessPoint[]
+  sessions        WifiSession[]
+  authorizations  NetworkAuthorization[]
+  subscriptions   Subscription[]
+
+  @@unique([controllerId, omadaSiteId])
+  @@index([locationId])
+}
+
+model AccessPoint {
+  id           String            @id @default(uuid())
+  locationId   String
+  networkSiteId String
+  macAddress   String            @unique
+  name         String
+  model        String?
+  status       AccessPointStatus @default(UNKNOWN)
+  lastSeenAt   DateTime?
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  location     Location          @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  networkSite  NetworkSite       @relation(fields: [networkSiteId], references: [id], onDelete: Restrict)
+  sessions     WifiSession[]
+
+  @@index([networkSiteId])
+  @@index([status])
+}
+
+// ---------------------------------------------------------------------------
+// Packages
+// ---------------------------------------------------------------------------
+
+model Package {
+  id                String              @id @default(uuid())
+  name              String
+  description       String?
+  durationValue     Int
+  durationUnit      PackageDurationUnit
+  priceTzs          Int                 // integer TZS, never floats
+  dataLimitMb       Int?
+  downloadKbps      Int?
+  uploadKbps        Int?
+  maxDevices        Int                 @default(1)
+  isActive          Boolean             @default(true)
+  isArchived        Boolean             @default(false)
+  validFrom         DateTime?
+  validUntil        DateTime?
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+  prices            PackagePrice[]
+  features          PackageFeature[]
+  locations         PackageLocation[]
+  payments          Payment[]
+  subscriptions     Subscription[]
+  voucherBatches    VoucherBatch[]
+  vouchers          Voucher[]
+
+  @@index([isActive, isArchived])
+}
+
+model PackagePrice {
+  id            String   @id @default(uuid())
+  packageId     String
+  amountTzs     Int
+  effectiveFrom DateTime @default(now())
+  createdAt     DateTime @default(now())
+  package       Package  @relation(fields: [packageId], references: [id], onDelete: Cascade)
+
+  @@index([packageId, effectiveFrom])
+}
+
+model PackageFeature {
+  id        String  @id @default(uuid())
+  packageId String
+  label     String
+  value     String
+  sortOrder Int     @default(0)
+  package   Package @relation(fields: [packageId], references: [id], onDelete: Cascade)
+}
+
+model PackageLocation {
+  packageId  String
+  locationId String
+  package    Package  @relation(fields: [packageId], references: [id], onDelete: Cascade)
+  location   Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  @@id([packageId, locationId])
+}
+
+// ---------------------------------------------------------------------------
+// Payments
+// ---------------------------------------------------------------------------
+
+model PaymentProvider {
+  id        String              @id @default(uuid())
+  code      PaymentProviderCode @unique
+  name      String
+  isEnabled Boolean             @default(false)
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
+  payments  Payment[]
+}
+
+model Payment {
+  id                    String              @id @default(uuid())
+  reference             String              @unique // internal reference, sent to the provider
+  customerId            String
+  packageId             String
+  providerId            String
+  amountTzs             Int
+  currency              String              @default("TZS")
+  phoneNumber           String
+  status                PaymentStatus       @default(PENDING)
+  providerTransactionId String?
+  idempotencyKey        String?             @unique
+  failureReason         String?
+  initiatedAt           DateTime            @default(now())
+  paidAt                DateTime?
+  failedAt              DateTime?
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+  customer              Customer            @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  package               Package             @relation(fields: [packageId], references: [id], onDelete: Restrict)
+  provider              PaymentProvider     @relation(fields: [providerId], references: [id], onDelete: Restrict)
+  transactions          PaymentTransaction[]
+  webhooks              PaymentWebhook[]
+  refunds               PaymentRefund[]
+  subscription          Subscription?
+
+  @@unique([providerId, providerTransactionId])
+  @@index([status])
+  @@index([customerId])
+}
+
+model PaymentTransaction {
+  id              String   @id @default(uuid())
+  paymentId       String
+  operation       String   // INITIATE | QUERY | REFUND
+  requestSnapshot Json?    // sanitized: never contains secrets
+  responseSnapshot Json?
+  httpStatus      Int?
+  succeeded       Boolean
+  errorMessage    String?
+  createdAt       DateTime @default(now())
+  payment         Payment  @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+
+  @@index([paymentId])
+}
+
+model PaymentWebhook {
+  id              String    @id @default(uuid())
+  providerCode    PaymentProviderCode
+  externalEventId String?
+  paymentId       String?
+  signatureValid  Boolean
+  payload         Json
+  receivedAt      DateTime  @default(now())
+  processedAt     DateTime?
+  processingError String?
+  payment         Payment?  @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+
+  @@unique([providerCode, externalEventId])
+  @@index([paymentId])
+}
+
+model PaymentRefund {
+  id               String   @id @default(uuid())
+  paymentId        String
+  amountTzs        Int
+  reason           String
+  status           String   // REQUESTED | SUCCEEDED | FAILED
+  providerRefundId String?
+  createdByUserId  String?
+  createdAt        DateTime @default(now())
+  payment          Payment  @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+
+  @@index([paymentId])
+}
+
+// ---------------------------------------------------------------------------
+// Subscriptions
+// ---------------------------------------------------------------------------
+
+model Subscription {
+  id              String             @id @default(uuid())
+  customerId      String
+  packageId       String
+  locationId      String
+  networkSiteId   String?
+  paymentId       String?            @unique
+  voucherId       String?
+  sourceType      SubscriptionSource
+  status          SubscriptionStatus @default(PENDING)
+  startsAt        DateTime?
+  expiresAt       DateTime?
+  remainingDataMb Int?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+  customer        Customer           @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  package         Package            @relation(fields: [packageId], references: [id], onDelete: Restrict)
+  location        Location           @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  networkSite     NetworkSite?       @relation(fields: [networkSiteId], references: [id], onDelete: SetNull)
+  payment         Payment?           @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  voucher         Voucher?           @relation(fields: [voucherId], references: [id], onDelete: SetNull)
+  devices         SubscriptionDevice[]
+  history         SubscriptionHistory[]
+  sessions        WifiSession[]
+  authorizations  NetworkAuthorization[]
+
+  @@index([status, expiresAt])
+  @@index([customerId])
+  @@index([voucherId])
+}
+
+model SubscriptionDevice {
+  id             String       @id @default(uuid())
+  subscriptionId String
+  customerDeviceId String
+  addedAt        DateTime     @default(now())
+  removedAt      DateTime?
+  subscription   Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  device         CustomerDevice @relation(fields: [customerDeviceId], references: [id], onDelete: Cascade)
+
+  @@unique([subscriptionId, customerDeviceId])
+}
+
+model SubscriptionHistory {
+  id             String             @id @default(uuid())
+  subscriptionId String
+  fromStatus     SubscriptionStatus?
+  toStatus       SubscriptionStatus
+  reason         String
+  actorUserId    String?
+  createdAt      DateTime           @default(now())
+  subscription   Subscription       @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  @@index([subscriptionId])
+}
+
+// ---------------------------------------------------------------------------
+// Vouchers
+// ---------------------------------------------------------------------------
+
+model VoucherBatch {
+  id              String    @id @default(uuid())
+  name            String
+  packageId       String
+  quantity        Int
+  usageLimit      Int       @default(1)
+  expiresAt       DateTime?
+  createdByUserId String?
+  createdAt       DateTime  @default(now())
+  package         Package   @relation(fields: [packageId], references: [id], onDelete: Restrict)
+  vouchers        Voucher[]
+}
+
+model Voucher {
+  id              String        @id @default(uuid())
+  batchId         String?
+  packageId       String
+  codeHash        String        @unique // HMAC-SHA256 of the normalized code; used for lookup
+  codeHint        String        // last 4 characters only, safe to display
+  codeCiphertext  String?       // AES-256-GCM of the code, needed for printing/export; never returned by list APIs
+  usageLimit      Int           @default(1)
+  usedCount       Int           @default(0)
+  status          VoucherStatus @default(ACTIVE)
+  expiresAt       DateTime?
+  soldByUserId    String?
+  soldAt          DateTime?
+  soldChannel     SoldChannel?
+  soldAmountTzs   Int?
+  revokedAt       DateTime?
+  revokedReason   String?
+  createdByUserId String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  batch           VoucherBatch? @relation(fields: [batchId], references: [id], onDelete: SetNull)
+  package         Package       @relation(fields: [packageId], references: [id], onDelete: Restrict)
+  redemptions     VoucherRedemption[]
+  subscriptions   Subscription[]
+
+  @@index([status, expiresAt])
+  @@index([batchId])
+}
+
+model VoucherRedemption {
+  id             String    @id @default(uuid())
+  voucherId      String
+  customerId     String?
+  subscriptionId String?   @unique
+  macAddress     String
+  status         String    // SUCCEEDED | AUTHORIZATION_FAILED | PENDING_RECOVERY
+  failureReason  String?
+  redeemedAt     DateTime  @default(now())
+  voucher        Voucher   @relation(fields: [voucherId], references: [id], onDelete: Restrict)
+  customer       Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+
+  @@index([voucherId])
+  @@index([macAddress])
+}
+
+// ---------------------------------------------------------------------------
+// Wi-Fi sessions and network authorization
+// ---------------------------------------------------------------------------
+
+model WifiSession {
+  id               String            @id @default(uuid())
+  externalSessionId String?          @unique // Omada client/session identifier when available
+  customerId       String?
+  customerDeviceId String?
+  macAddress       String
+  ipAddress        String?
+  accessPointId    String?
+  networkSiteId    String?
+  subscriptionId   String?
+  startedAt        DateTime          @default(now())
+  expiresAt        DateTime?
+  disconnectedAt   DateTime?
+  status           WifiSessionStatus @default(ACTIVE)
+  disconnectReason String?
+  bytesUploaded    BigInt            @default(0)
+  bytesDownloaded  BigInt            @default(0)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  customer         Customer?         @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  device           CustomerDevice?   @relation(fields: [customerDeviceId], references: [id], onDelete: SetNull)
+  accessPoint      AccessPoint?      @relation(fields: [accessPointId], references: [id], onDelete: SetNull)
+  networkSite      NetworkSite?      @relation(fields: [networkSiteId], references: [id], onDelete: SetNull)
+  subscription     Subscription?     @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+  events           WifiSessionEvent[]
+
+  @@index([macAddress, status])
+  @@index([status, expiresAt])
+  @@index([subscriptionId])
+}
+
+model WifiSessionEvent {
+  id        String      @id @default(uuid())
+  sessionId String
+  type      String      // CREATED | AUTHORIZED | EXPIRED | DISCONNECTED | ERROR ...
+  message   String?
+  metadata  Json?
+  createdAt DateTime    @default(now())
+  session   WifiSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+}
+
+model NetworkAuthorization {
+  id             String                     @id @default(uuid())
+  subscriptionId String?
+  networkSiteId  String
+  macAddress     String
+  status         NetworkAuthorizationStatus @default(PENDING)
+  attemptCount   Int                        @default(0)
+  lastError      String?
+  authorizedAt   DateTime?
+  revokedAt      DateTime?
+  createdAt      DateTime                   @default(now())
+  updatedAt      DateTime                   @updatedAt
+  subscription   Subscription?              @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+  networkSite    NetworkSite                @relation(fields: [networkSiteId], references: [id], onDelete: Cascade)
+
+  @@index([networkSiteId, macAddress])
+  @@index([status])
+}
+
+// ---------------------------------------------------------------------------
+// Notifications, settings, network events, background jobs
+// ---------------------------------------------------------------------------
+
+model Notification {
+  id          String             @id @default(uuid())
+  customerId  String?
+  userId      String?
+  channel     NotificationChannel
+  recipient   String?
+  subject     String?
+  body        String
+  status      NotificationStatus @default(QUEUED)
+  error       String?
+  sentAt      DateTime?
+  createdAt   DateTime           @default(now())
+  customer    Customer?          @relation(fields: [customerId], references: [id], onDelete: SetNull)
+
+  @@index([customerId])
+  @@index([status])
+}
+
+model SystemSetting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+}
+
+model IntegrationConfiguration {
+  id        String   @id @default(uuid())
+  provider  String   @unique // e.g. "omada", "sms", "email"
+  isEnabled Boolean  @default(false)
+  config    Json     // non-secret configuration only; secrets live in environment variables
+  updatedAt DateTime @updatedAt
+}
+
+model NetworkEvent {
+  id            String   @id @default(uuid())
+  networkSiteId String?
+  accessPointId String?
+  type          String
+  severity      String   // INFO | WARNING | ERROR
+  message       String
+  metadata      Json?
+  createdAt     DateTime @default(now())
+
+  @@index([networkSiteId, createdAt])
+  @@index([accessPointId])
+}
+
+model BackgroundJobRecord {
+  id          String              @id @default(uuid())
+  jobName     String
+  jobKey      String?             @unique
+  payload     Json?
+  status      BackgroundJobStatus @default(QUEUED)
+  attempts    Int                 @default(0)
+  lastError   String?
+  runAt       DateTime            @default(now())
+  completedAt DateTime?
+  createdAt   DateTime            @default(now())
+
+  @@index([status, runAt])
+}

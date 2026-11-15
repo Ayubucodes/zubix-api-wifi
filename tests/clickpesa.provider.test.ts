@@ -1,0 +1,109 @@
+import { describe, expect, it, vi } from "vitest";
+import { canonicalJson, ClickPesaError, ClickPesaProvider } from "../src/integrations/payments/clickpesa.provider.js";
+
+const SECRET = "test-checksum-secret";
+
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+}
+
+describe("canonicalJson", () => {
+  it("sorts keys at every level and produces compact JSON", () => {
+    expect(canonicalJson({ b: 1, a: { d: 2, c: [{ z: 1, y: 2 }] } })).toBe('{"a":{"c":[{"y":2,"z":1}],"d":2},"b":1}');
+  });
+});
+
+describe("ClickPesaProvider", () => {
+  it("caches the token and reuses it until close to expiry", async () => {
+    let now = 1_000_000;
+    const fetchImpl = vi.fn(async (url: string | URL | Request) => {
+      if (String(url).endsWith("/generate-token")) return jsonResponse({ success: true, token: "Bearer t1" });
+      return jsonResponse({ id: "TX1", status: "PROCESSING" });
+    }) as unknown as typeof fetch;
+
+    const provider = new ClickPesaProvider({
+      baseUrl: "https://api.clickpesa.com/third-parties",
+      clientId: "cid",
+      apiKey: "key",
+      fetchImpl,
+      now: () => now,
+    });
+
+    await provider.initiatePayment({ reference: "ZBX1", amountTzs: 500, phoneNumber: "255712345678" });
+    await provider.initiatePayment({ reference: "ZBX2", amountTzs: 500, phoneNumber: "255712345678" });
+    const tokenCalls = (fetchImpl as unknown as { mock: { calls: unknown[][] } }).mock.calls.filter((c) =>
+      String(c[0]).endsWith("/generate-token"),
+    );
+    expect(tokenCalls).toHaveLength(1);
+
+    now += 55 * 60 * 1000;
+    await provider.initiatePayment({ reference: "ZBX3", amountTzs: 500, phoneNumber: "255712345678" });
+    const tokenCallsAfter = (fetchImpl as unknown as { mock: { calls: unknown[][] } }).mock.calls.filter((c) =>
+      String(c[0]).endsWith("/generate-token"),
+    );
+    expect(tokenCallsAfter).toHaveLength(2);
+  });
+
+  it("sends the documented USSD push body with amount as a string and TZS currency", async () => {
+    const seen: Array<{ url: string; init: RequestInit }> = [];
+    const fetchImpl = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      seen.push({ url: String(url), init: init ?? {} });
+      if (String(url).endsWith("/generate-token")) return jsonResponse({ success: true, token: "Bearer t" });
+      return jsonResponse({ id: "TX9", status: "PROCESSING" });
+    }) as unknown as typeof fetch;
+
+    const provider = new ClickPesaProvider({ baseUrl: "https://api.clickpesa.com/third-parties", clientId: "c", apiKey: "k", fetchImpl });
+    const result = await provider.initiatePayment({ reference: "ZBX9", amountTzs: 2000, phoneNumber: "255712345678" });
+
+    expect(result).toEqual({ providerTransactionId: "TX9", status: "PROCESSING" });
+    const call = seen.find((s) => s.url.endsWith("/payments/initiate-ussd-push-request"));
+    expect(call?.init.headers).toMatchObject({ authorization: "Bearer t" });
+    expect(JSON.parse(String(call?.init.body))).toEqual({
+      amount: "2000",
+      currency: "TZS",
+      orderReference: "ZBX9",
+      phoneNumber: "255712345678",
+    });
+  });
+
+  it("refuses order references longer than 20 characters or non-alphanumeric", async () => {
+    const provider = new ClickPesaProvider({ baseUrl: "x", clientId: "c", apiKey: "k", fetchImpl: vi.fn() as unknown as typeof fetch });
+    await expect(provider.initiatePayment({ reference: "ZBX-1", amountTzs: 1, phoneNumber: "255712345678" })).rejects.toBeInstanceOf(
+      ClickPesaError,
+    );
+    await expect(provider.initiatePayment({ reference: "A".repeat(21), amountTzs: 1, phoneNumber: "255712345678" })).rejects.toBeInstanceOf(
+      ClickPesaError,
+    );
+  });
+
+  it("verifies a webhook checksum and rejects tampered amounts", () => {
+    const provider = new ClickPesaProvider({ baseUrl: "x", clientId: "c", apiKey: "k", checksumSecret: SECRET, fetchImpl: vi.fn() as unknown as typeof fetch });
+    const unsigned = { event: "PAYMENT RECEIVED", data: { id: "TX1", orderReference: "ZBX1", status: "SUCCESS", collectedAmount: "500", collectedCurrency: "TZS" } };
+    const signed = { ...unsigned, checksum: provider.sign(unsigned), checksumMethod: "HMAC-SHA256" };
+
+    expect(provider.verifyWebhook(signed)).toBe(true);
+    expect(provider.verifyWebhook({ ...signed, data: { ...signed.data, collectedAmount: "5000" } })).toBe(false);
+    expect(provider.verifyWebhook(unsigned)).toBe(false);
+  });
+
+  it("fails closed when no checksum secret is configured", () => {
+    const provider = new ClickPesaProvider({ baseUrl: "x", clientId: "c", apiKey: "k", fetchImpl: vi.fn() as unknown as typeof fetch });
+    expect(provider.verifyWebhook({ event: "PAYMENT RECEIVED", checksum: "anything" })).toBe(false);
+  });
+
+  it("parses a PAYMENT RECEIVED webhook into the normalized shape", () => {
+    const provider = new ClickPesaProvider({ baseUrl: "x", clientId: "c", apiKey: "k", fetchImpl: vi.fn() as unknown as typeof fetch });
+    const parsed = provider.parseWebhook({
+      event: "PAYMENT RECEIVED",
+      data: { id: "ORD123456LCP7890", orderReference: "ORD123456", status: "SETTLED", collectedAmount: "10000", collectedCurrency: "TZS" },
+    });
+    expect(parsed).toEqual({
+      providerTransactionId: "ORD123456LCP7890",
+      reference: "ORD123456",
+      status: "SUCCESS",
+      amountTzs: 10000,
+      currency: "TZS",
+      failureReason: undefined,
+    });
+  });
+});
