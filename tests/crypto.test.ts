@@ -13,6 +13,12 @@ describe("password hashing", () => {
     expect(await verifyPassword(hash, "wrong-password")).toBe(false);
   });
 
+  it("verifies Argon2id hashes created by the previous implementation", async () => {
+    const hash =
+      "$argon2id$v=19$m=19456,t=2,p=1$ABEiM0RVZneImaq7zN3u/w$yD7Mll4qe7L6nR6MnGYQ9aEcLH1T2Ld3RM+qSeoBPxs";
+    expect(await verifyPassword(hash, "legacy-compatible-password")).toBe(true);
+  });
+
   it("returns false for a malformed hash instead of throwing", async () => {
     expect(await verifyPassword("not-a-hash", "anything")).toBe(false);
   });

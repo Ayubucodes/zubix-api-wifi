@@ -1,20 +1,30 @@
 import { createHash, randomBytes } from "node:crypto";
-import argon2 from "argon2";
+import { argon2id, argon2Verify } from "hash-wasm";
 
-const ARGON2_OPTIONS: argon2.Options = {
-  type: argon2.argon2id,
-  memoryCost: 19456, // 19 MiB, OWASP minimum recommendation
-  timeCost: 2,
+const ARGON2_OPTIONS = {
+  iterations: 2,
+  memorySize: 19456,
   parallelism: 1,
+  hashLength: 32,
 };
 
 export function hashPassword(plain: string): Promise<string> {
-  return argon2.hash(plain, ARGON2_OPTIONS);
+  return argon2id({
+    password: plain,
+    salt: randomBytes(16),
+    ...ARGON2_OPTIONS,
+    outputType: "encoded",
+  }).then((hash) => {
+    if (typeof hash !== "string") {
+      throw new Error("Argon2 did not return an encoded hash");
+    }
+    return hash;
+  });
 }
 
 export async function verifyPassword(hash: string, plain: string): Promise<boolean> {
   try {
-    return await argon2.verify(hash, plain);
+    return await argon2Verify({ hash, password: plain });
   } catch {
     return false;
   }
