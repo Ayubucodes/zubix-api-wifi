@@ -14,6 +14,26 @@ describe("canonicalJson", () => {
 });
 
 describe("ClickPesaProvider", () => {
+  it("calls the Worker fetch function with its required global receiver", async () => {
+    const receivers: unknown[] = [];
+    const fetchImpl = vi.fn(async function (this: unknown, url: string | URL | Request) {
+      receivers.push(this);
+      return String(url).endsWith("/generate-token")
+        ? jsonResponse({ success: true, token: "Bearer t" })
+        : jsonResponse({ id: "TX1", status: "PROCESSING" });
+    }) as unknown as typeof fetch;
+    const provider = new ClickPesaProvider({
+      baseUrl: "https://api.clickpesa.com/third-parties",
+      clientId: "cid",
+      apiKey: "key",
+      fetchImpl,
+    });
+
+    await provider.initiatePayment({ reference: "ZBX1", amountTzs: 500, phoneNumber: "255712345678" });
+
+    expect(receivers).toEqual([globalThis, globalThis]);
+  });
+
   it("caches the token and reuses it until close to expiry", async () => {
     let now = 1_000_000;
     const fetchImpl = vi.fn(async (url: string | URL | Request) => {

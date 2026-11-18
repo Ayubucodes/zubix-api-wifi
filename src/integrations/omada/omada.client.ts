@@ -72,7 +72,7 @@ export class OmadaClient {
   private readonly accessHeaders: Record<string, string>;
 
   constructor(private readonly config: OmadaClientConfig) {
-    this.fetchImpl = config.fetchImpl ?? fetch;
+    this.fetchImpl = (config.fetchImpl ?? globalThis.fetch).bind(globalThis);
     this.sleep = config.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
     this.timeoutMs = config.timeoutMs ?? 10_000;
     this.maxRetries = config.maxRetries ?? 3;

@@ -22,6 +22,25 @@ const baseInput = {
 };
 
 describe("OmadaClient", () => {
+  it("calls the Worker fetch function with its required global receiver", async () => {
+    const receivers: unknown[] = [];
+    const fetchImpl = vi.fn(async function (this: unknown) {
+      receivers.push(this);
+      return receivers.length === 1 ? loginResponse() : okResponse();
+    }) as unknown as typeof fetch;
+    const client = new OmadaClient({
+      baseUrl: "https://omada.local:8043",
+      operatorName: "hotspot-op",
+      operatorPassword: "pw",
+      fetchImpl,
+      sleep: async () => undefined,
+    });
+
+    await client.authorizeClient(baseInput);
+
+    expect(receivers).toEqual([globalThis, globalThis]);
+  });
+
   it("logs in as operator then authorizes with cookie and CSRF token", async () => {
     const calls: Array<{ url: string; init: RequestInit }> = [];
     const fetchImpl = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {

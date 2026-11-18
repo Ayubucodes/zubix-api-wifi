@@ -46,7 +46,7 @@ export class ClickPesaProvider implements PaymentProvider {
   private readonly now: () => number;
 
   constructor(private readonly config: ClickPesaConfig) {
-    this.fetchImpl = config.fetchImpl ?? fetch;
+    this.fetchImpl = (config.fetchImpl ?? globalThis.fetch).bind(globalThis);
     this.now = config.now ?? (() => Date.now());
   }
 
