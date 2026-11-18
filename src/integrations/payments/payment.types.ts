@@ -30,6 +30,7 @@ export interface NormalizedWebhook {
 export interface PaymentProvider {
   readonly code: ProviderCode;
   initiatePayment(request: InitiatePaymentRequest): Promise<InitiatePaymentResult>;
+  queryPaymentStatus?(reference: string): Promise<NormalizedWebhook | null>;
   /** Returns true only if the webhook body carries a valid signature for this provider. */
   verifyWebhook(body: Record<string, unknown>): boolean;
   /** Returns null if the body is not a recognized payment event. */

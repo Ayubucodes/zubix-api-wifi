@@ -287,7 +287,7 @@ export function createWorkerApi(): Hono<ApiEnvironment> {
     const { reference } = parseOrThrow(paymentReferenceParam, context.req.param());
     const runtime = context.get("runtime");
     const service = new PaymentsService(runtime.prisma, runtime.paymentProviders);
-    const payment = await service.getByReference(reference);
+    const payment = await service.getCurrentByReference(reference);
     const subscription =
       payment.status === "SUCCESS"
         ? await runtime.prisma.subscription.findUnique({
@@ -320,7 +320,7 @@ export function createWorkerApi(): Hono<ApiEnvironment> {
   payments.get("/:reference", authorize("payments:read"), async (context) => {
     const { reference } = parseOrThrow(paymentReferenceParam, context.req.param());
     return context.json(await new PaymentsService(context.get("runtime").prisma, context.get("runtime").paymentProviders)
-      .getByReference(reference));
+      .getCurrentByReference(reference));
   });
   payments.post("/dev/mock/:reference/complete", async (context) => {
     if (context.get("runtime").env.APP_ENV === "production") {

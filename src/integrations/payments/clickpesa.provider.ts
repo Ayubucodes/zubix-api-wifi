@@ -31,6 +31,7 @@ export interface ClickPesaConfig {
 }
 
 const TOKEN_TTL_MS = 50 * 60 * 1000; // token is valid for 1 hour; refresh early
+const STATUS_QUERY_COOLDOWN_MS = 10_000;
 
 export class ClickPesaError extends Error {
   constructor(message: string, readonly status?: number) {
@@ -42,6 +43,7 @@ export class ClickPesaError extends Error {
 export class ClickPesaProvider implements PaymentProvider {
   readonly code = "CLICKPESA" as const;
   private token: { value: string; expiresAt: number } | null = null;
+  private readonly lastStatusQueryAt = new Map<string, number>();
   private readonly fetchImpl: typeof fetch;
   private readonly now: () => number;
 
@@ -102,6 +104,65 @@ export class ClickPesaProvider implements PaymentProvider {
       );
     }
     return { providerTransactionId: body.id, status: mapStatus(body.status) };
+  }
+
+  /** Reconciles a payment if its webhook is delayed or unavailable. */
+  async queryPaymentStatus(reference: string): Promise<NormalizedWebhook | null> {
+    if (!/^[A-Za-z0-9]{1,20}$/.test(reference)) {
+      throw new ClickPesaError("Order reference must be alphanumeric and at most 20 characters");
+    }
+
+    const now = this.now();
+    const lastQueryAt = this.lastStatusQueryAt.get(reference);
+    if (lastQueryAt !== undefined && now - lastQueryAt < STATUS_QUERY_COOLDOWN_MS) return null;
+    this.lastStatusQueryAt.set(reference, now);
+    if (this.lastStatusQueryAt.size > 1000) {
+      for (const [cachedReference, queriedAt] of this.lastStatusQueryAt) {
+        if (now - queriedAt >= STATUS_QUERY_COOLDOWN_MS) this.lastStatusQueryAt.delete(cachedReference);
+      }
+    }
+
+    const response = await this.fetchImpl(
+      `${this.config.baseUrl}/payments/${encodeURIComponent(reference)}`,
+      {
+        method: "GET",
+        headers: { authorization: await this.getToken() },
+        signal: AbortSignal.timeout(10_000),
+      },
+    );
+    if (response.status === 404) return null;
+    if (!response.ok) {
+      throw new ClickPesaError("ClickPesa payment status query failed", response.status);
+    }
+
+    const body = await response.json().catch(() => null);
+    if (!Array.isArray(body)) {
+      throw new ClickPesaError("ClickPesa returned an invalid payment status response", response.status);
+    }
+    const transaction = body.find(
+      (item): item is Record<string, unknown> =>
+        typeof item === "object" &&
+        item !== null &&
+        !Array.isArray(item) &&
+        item.orderReference === reference,
+    );
+    if (!transaction || typeof transaction.id !== "string" || typeof transaction.status !== "string") return null;
+
+    const status = mapStatus(transaction.status);
+    const amount = parseAmount(transaction.collectedAmount);
+    const currency = typeof transaction.collectedCurrency === "string" ? transaction.collectedCurrency : undefined;
+    if (status === "SUCCESS" && (amount === undefined || !currency)) {
+      throw new ClickPesaError("ClickPesa payment status omitted the collected amount or currency");
+    }
+
+    return {
+      providerTransactionId: transaction.id,
+      reference,
+      status,
+      ...(amount === undefined ? {} : { amountTzs: amount }),
+      ...(currency ? { currency } : {}),
+      ...(typeof transaction.message === "string" && transaction.message ? { failureReason: transaction.message } : {}),
+    };
   }
 
   /**
@@ -193,6 +254,12 @@ function mapStatus(raw: string | undefined): ProviderStatus {
     default:
       return "PENDING";
   }
+}
+
+function parseAmount(value: unknown): number | undefined {
+  if (typeof value !== "string" && typeof value !== "number") return undefined;
+  const amount = Number(value);
+  return Number.isSafeInteger(amount) && amount >= 0 ? amount : undefined;
 }
 
 function getInitiationErrorMessage(value: unknown): string | undefined {

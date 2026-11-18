@@ -52,7 +52,7 @@ export const paymentsRoutes: FastifyPluginAsync = async (app) => {
     },
     async (request) => {
       const { reference } = parseOrThrow(referenceParam, request.params);
-      const payment = await service.getByReference(reference);
+      const payment = await service.getCurrentByReference(reference);
       const subscription =
         payment.status === "SUCCESS"
           ? await app.prisma.subscription.findUnique({ where: { paymentId: payment.id }, select: { id: true, expiresAt: true } })
@@ -97,7 +97,7 @@ export const paymentsRoutes: FastifyPluginAsync = async (app) => {
       preHandler: [app.authorize("payments:read")],
       schema: { tags: ["payments"], summary: "Payment details" },
     },
-    async (request) => service.getByReference(parseOrThrow(referenceParam, request.params).reference),
+    async (request) => service.getCurrentByReference(parseOrThrow(referenceParam, request.params).reference),
   );
 
   // Development only. Lets you test the full purchase flow without a real provider.

@@ -35,9 +35,11 @@ Documented facts (checked against the official docs):
   collected amount. The adapter verifies the checksum and marks only the
   payment identified by its order reference as failed.
 - **Status query:** ClickPesa documents `GET
-  /payments/{orderReference}`. The API currently uses webhooks for automatic
-  subscription activation; use the ClickPesa dashboard or query endpoint to
-  investigate a callback that was not received.
+  /payments/{orderReference}`. The API checks this endpoint when a pending or
+  processing ClickPesa payment is polled, and activates the subscription only
+  when the returned amount and currency match the order. The query is
+  throttled per payment to once every 10 seconds per warm Worker isolate;
+  webhooks remain the primary update mechanism.
 - **Other webhook events:** `PAYMENT INITIATED`, `PAYMENT REFUNDED`, and
   `PAYMENT REVERSED` are acknowledged as ignored events. They do not activate a
   subscription, change payment status, or disconnect a device. Configure
@@ -89,9 +91,10 @@ reference and status. Show the customer that a USSD prompt is being sent, then
 poll `GET /api/v1/payments/status/{reference}` until it returns `SUCCESS` or
 `FAILED`. On `SUCCESS`, the response includes `subscriptionId`; only then call
 `POST /api/v1/public/connect` with that ID and the device information from the
-Omada redirect. Do not treat a successful initiation response as proof of
-payment. ClickPesa has no sandbox, so testing this flow sends a real production
-payment prompt; use your own phone and a low-priced package.
+Omada redirect, including `clientIp`. Do not treat a successful initiation
+response as proof of payment. ClickPesa has no sandbox, so testing this flow
+sends a real production payment prompt; use your own phone and a low-priced
+package.
 
 The API cannot check a customer's mobile-money balance before asking ClickPesa
 to initiate the payment. If ClickPesa rejects a push because the wallet has

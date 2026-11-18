@@ -172,6 +172,60 @@ export class PaymentsService {
     return toPaymentDto(payment);
   }
 
+  /** Queries ClickPesa for pending transactions, then returns their latest persisted state. */
+  async getCurrentByReference(reference: string) {
+    const payment = await this.prisma.payment.findUnique({
+      where: { reference },
+      include: { package: true, provider: true },
+    });
+    if (!payment) throw AppError.notFound("Payment not found");
+
+    if (payment.provider.code === "CLICKPESA" && (payment.status === "PENDING" || payment.status === "PROCESSING")) {
+      const provider = this.providers.get("CLICKPESA");
+      if (provider?.queryPaymentStatus) {
+        const status = await provider.queryPaymentStatus(reference);
+        if (status) {
+          if (status.reference !== payment.reference) {
+            throw AppError.badGateway("ClickPesa returned a status for a different payment.");
+          }
+          if (
+            status.status !== "FAILED" &&
+            (status.amountTzs !== payment.amountTzs || status.currency !== payment.currency)
+          ) {
+            await this.prisma.paymentTransaction.create({
+              data: {
+                paymentId: payment.id,
+                operation: "QUERY",
+                succeeded: false,
+                errorMessage: `Amount or currency mismatch: got ${status.amountTzs} ${status.currency}`,
+              },
+            });
+            throw AppError.conflict("ClickPesa payment details did not match this order. Contact support.");
+          }
+
+          const outcome = await this.applyStatus(payment.id, status, "QUERY");
+          if (status.status === "FAILED" && outcome === "failed") {
+            await this.prisma.paymentTransaction.create({
+              data: {
+                paymentId: payment.id,
+                operation: "QUERY",
+                succeeded: true,
+                responseSnapshot: { providerTransactionId: status.providerTransactionId, status: status.status },
+              },
+            });
+          } else if (status.status === "PENDING" || status.status === "PROCESSING") {
+            await this.prisma.payment.updateMany({
+              where: { id: payment.id, status: { in: ["PENDING", "PROCESSING"] } },
+              data: { status: "PROCESSING", providerTransactionId: status.providerTransactionId },
+            });
+          }
+        }
+      }
+    }
+
+    return this.getByReference(reference);
+  }
+
   async list(params: { page: number; pageSize: number; status?: string; providerCode?: string; search?: string }) {
     const where: Prisma.PaymentWhereInput = {
       ...(params.status ? { status: params.status as PaymentStatus } : {}),
@@ -270,7 +324,11 @@ export class PaymentsService {
     return this.processWebhook("MOCK", body);
   }
 
-  private async applyStatus(paymentId: string, parsed: NormalizedWebhook): Promise<WebhookOutcome> {
+  private async applyStatus(
+    paymentId: string,
+    parsed: NormalizedWebhook,
+    source: "WEBHOOK" | "QUERY" = "WEBHOOK",
+  ): Promise<WebhookOutcome> {
     if (parsed.status === "SUCCESS") {
       return this.prisma.$transaction(async (tx) => {
         // Atomic claim: only one caller can move the payment to SUCCESS, so activation runs once.
@@ -291,7 +349,12 @@ export class PaymentsService {
           now: this.now(),
         });
         await tx.paymentTransaction.create({
-          data: { paymentId, operation: "WEBHOOK_SUCCESS", succeeded: true, responseSnapshot: { providerTransactionId: parsed.providerTransactionId } },
+          data: {
+            paymentId,
+            operation: source === "QUERY" ? "QUERY" : "WEBHOOK_SUCCESS",
+            succeeded: true,
+            responseSnapshot: { providerTransactionId: parsed.providerTransactionId },
+          },
         });
         return "activated" as const;
       });
@@ -300,7 +363,12 @@ export class PaymentsService {
     if (parsed.status === "FAILED") {
       const result = await this.prisma.payment.updateMany({
         where: { id: paymentId, status: { in: ["PENDING", "PROCESSING"] } },
-        data: { status: "FAILED", failureReason: parsed.failureReason ?? "Payment failed", failedAt: this.now() },
+        data: {
+          status: "FAILED",
+          failureReason: parsed.failureReason ?? "Payment failed",
+          failedAt: this.now(),
+          providerTransactionId: parsed.providerTransactionId,
+        },
       });
       return result.count === 1 ? "failed" : "already_processed";
     }

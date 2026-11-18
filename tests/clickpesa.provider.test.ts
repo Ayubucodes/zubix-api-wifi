@@ -86,6 +86,63 @@ describe("ClickPesaProvider", () => {
     });
   });
 
+  it("queries ClickPesa by order reference and normalizes its payment status", async () => {
+    const seen: Array<{ url: string; init: RequestInit }> = [];
+    const fetchImpl = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      seen.push({ url: String(url), init: init ?? {} });
+      if (String(url).endsWith("/generate-token")) return jsonResponse({ success: true, token: "Bearer t" });
+      return jsonResponse([
+        {
+          id: "TX12",
+          orderReference: "ZBX12",
+          status: "SETTLED",
+          collectedAmount: "500",
+          collectedCurrency: "TZS",
+        },
+      ]);
+    }) as unknown as typeof fetch;
+    const provider = new ClickPesaProvider({
+      baseUrl: "https://api.clickpesa.com/third-parties",
+      clientId: "c",
+      apiKey: "k",
+      fetchImpl,
+    });
+
+    await expect(provider.queryPaymentStatus("ZBX12")).resolves.toEqual({
+      providerTransactionId: "TX12",
+      reference: "ZBX12",
+      status: "SUCCESS",
+      amountTzs: 500,
+      currency: "TZS",
+    });
+    const query = seen.find((call) => call.url.endsWith("/payments/ZBX12"));
+    expect(query?.init.method).toBe("GET");
+    expect(query?.init.headers).toMatchObject({ authorization: "Bearer t" });
+  });
+
+  it("throttles repeated status queries for the same payment", async () => {
+    let now = 1_000_000;
+    const fetchImpl = vi.fn(async (url: string | URL | Request) =>
+      String(url).endsWith("/generate-token")
+        ? jsonResponse({ success: true, token: "Bearer t" })
+        : jsonResponse([{ id: "TX12", orderReference: "ZBX12", status: "PROCESSING" }]),
+    ) as unknown as typeof fetch;
+    const provider = new ClickPesaProvider({
+      baseUrl: "https://api.clickpesa.com/third-parties",
+      clientId: "c",
+      apiKey: "k",
+      fetchImpl,
+      now: () => now,
+    });
+
+    await provider.queryPaymentStatus("ZBX12");
+    await expect(provider.queryPaymentStatus("ZBX12")).resolves.toBeNull();
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    now += 10_000;
+    await provider.queryPaymentStatus("ZBX12");
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
+  });
+
   it("preserves a sanitized ClickPesa initiation rejection reason", async () => {
     const fetchImpl = vi.fn(async (url: string | URL | Request) => {
       if (String(url).endsWith("/generate-token")) return jsonResponse({ success: true, token: "Bearer t" });
