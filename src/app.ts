@@ -95,6 +95,10 @@ export async function buildApp({ env, prisma, logger = true }: BuildAppOptions):
             baseUrl: env.OMADA_CONTROLLER_URL as string,
             operatorName: env.OMADA_USERNAME as string,
             operatorPassword: env.OMADA_PASSWORD as string,
+            cloudflareAccess:
+              env.OMADA_ACCESS_CLIENT_ID && env.OMADA_ACCESS_CLIENT_SECRET
+                ? { clientId: env.OMADA_ACCESS_CLIENT_ID, clientSecret: env.OMADA_ACCESS_CLIENT_SECRET }
+                : undefined,
             paths:
               env.OMADA_LOGIN_PATH && env.OMADA_AUTHORIZE_PATH
                 ? { login: env.OMADA_LOGIN_PATH, authorize: env.OMADA_AUTHORIZE_PATH }

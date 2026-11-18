@@ -18,13 +18,14 @@ export function createProviders(env: AppEnv): Map<ProviderCode, PaymentProvider>
     providers.set("MOCK", new MockProvider(secret));
   }
 
-  if (env.CLICKPESA_BASE_URL && env.CLICKPESA_CLIENT_ID && env.CLICKPESA_CLIENT_SECRET) {
+  const clickPesaApiKey = env.CLICKPESA_API_KEY ?? env.CLICKPESA_CLIENT_SECRET;
+  if (env.CLICKPESA_BASE_URL && env.CLICKPESA_CLIENT_ID && clickPesaApiKey) {
     providers.set(
       "CLICKPESA",
       new ClickPesaProvider({
         baseUrl: env.CLICKPESA_BASE_URL,
         clientId: env.CLICKPESA_CLIENT_ID,
-        apiKey: env.CLICKPESA_CLIENT_SECRET,
+        apiKey: clickPesaApiKey,
         checksumSecret: env.CLICKPESA_CHECKSUM_SECRET,
       }),
     );

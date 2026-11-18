@@ -6,6 +6,7 @@ import { PublicService } from "./public.service.js";
 const connectBody = z.object({
   subscriptionId: z.string().uuid(),
   clientMac: z.string().min(11).max(17),
+  clientIp: z.string().ip(),
   apMac: z.string().min(11).max(17),
   ssidName: z.string().max(64).default(""),
   radioId: z.union([z.literal(0), z.literal(1)]).default(0),
@@ -36,7 +37,7 @@ export const publicRoutes: FastifyPluginAsync<{ appName: string; supportPhone?: 
     { config: { rateLimit: { max: 10, timeWindow: "1 minute" } }, schema: { tags: ["public"], summary: "Let a paid device onto the Wi-Fi" } },
     async (request) => {
       const input = parseOrThrow(connectBody, request.body);
-      return service.connect(input, request.ip);
+      return service.connect(input);
     },
   );
 };

@@ -5,6 +5,7 @@ import { OmadaError, type OmadaClient } from "../../integrations/omada/omada.cli
 export interface ConnectInput {
   subscriptionId: string;
   clientMac: string;
+  clientIp: string;
   apMac: string;
   ssidName: string;
   radioId: 0 | 1;
@@ -53,7 +54,7 @@ export class PublicService {
    * Lets a device onto the network after a payment or voucher. The subscription id is the proof:
    * it is only handed to the person who paid or redeemed. The pass's device limit is enforced here.
    */
-  async connect(input: ConnectInput, clientIp: string): Promise<ConnectResult> {
+  async connect(input: ConnectInput): Promise<ConnectResult> {
     if (!MAC_PATTERN.test(input.clientMac) || !MAC_PATTERN.test(input.apMac)) {
       throw AppError.badRequest("This page was not opened from the Wi-Fi sign-in screen. Reconnect to the Wi-Fi and try again.");
     }
@@ -70,8 +71,8 @@ export class PublicService {
     await this.prisma.$transaction(async (tx) => {
       const device = await tx.customerDevice.upsert({
         where: { macAddress: mac },
-        update: { customerId: sub.customerId, lastIpAddress: clientIp, lastSeenAt: now },
-        create: { macAddress: mac, customerId: sub.customerId, lastIpAddress: clientIp, lastSeenAt: now },
+        update: { customerId: sub.customerId, lastIpAddress: input.clientIp, lastSeenAt: now },
+        create: { macAddress: mac, customerId: sub.customerId, lastIpAddress: input.clientIp, lastSeenAt: now },
       });
       const link = await tx.subscriptionDevice.findUnique({
         where: { subscriptionId_customerDeviceId: { subscriptionId: sub.id, customerDeviceId: device.id } },
@@ -106,7 +107,7 @@ export class PublicService {
     try {
       await this.omadaFactory().authorizeClient({
         clientMac: input.clientMac.toUpperCase(),
-        clientIp,
+        clientIp: input.clientIp,
         time: sub.expiresAt.getTime() - now.getTime(),
         apMac: input.apMac.toUpperCase(),
         ssidName: input.ssidName,

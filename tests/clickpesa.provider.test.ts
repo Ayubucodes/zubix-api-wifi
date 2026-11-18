@@ -106,4 +106,19 @@ describe("ClickPesaProvider", () => {
       failureReason: undefined,
     });
   });
+
+  it("parses ClickPesa's PAYMENT FAILED webhook without an amount", () => {
+    const provider = new ClickPesaProvider({ baseUrl: "x", clientId: "c", apiKey: "k", fetchImpl: vi.fn() as unknown as typeof fetch });
+    expect(
+      provider.parseWebhook({
+        event: "PAYMENT FAILED",
+        data: { id: "ORD123456LCP7890", orderReference: "ORD123456", status: "FAILED", message: "Insufficient balance" },
+      }),
+    ).toEqual({
+      providerTransactionId: "ORD123456LCP7890",
+      reference: "ORD123456",
+      status: "FAILED",
+      failureReason: "Insufficient balance",
+    });
+  });
 });

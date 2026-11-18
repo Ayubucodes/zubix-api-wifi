@@ -16,8 +16,8 @@ import type {
  * IMPORTANT, from the docs: ClickPesa has NO sandbox. API access needs approved KYC, and every
  * call hits production. Do not run payment tests against this adapter with real customers.
  *
- * Not documented in the pages reviewed: a transaction status query endpoint, and the exact
- * source of the checksum secret key. Status is therefore driven by webhooks.
+ * ClickPesa also documents GET {base}/payments/{orderReference} for payment reconciliation.
+ * Webhooks are still the primary mechanism for timely status updates.
  */
 
 export interface ClickPesaConfig {
@@ -114,23 +114,35 @@ export class ClickPesaProvider implements PaymentProvider {
   }
 
   parseWebhook(body: Record<string, unknown>): NormalizedWebhook | null {
-    if (body.event !== "PAYMENT RECEIVED" || typeof body.data !== "object" || body.data === null) {
+    if (
+      (body.event !== "PAYMENT RECEIVED" && body.event !== "PAYMENT FAILED") ||
+      typeof body.data !== "object" ||
+      body.data === null
+    ) {
       return null;
     }
     const data = body.data as Record<string, unknown>;
     const id = data.id;
     const reference = data.orderReference;
     const amount = Number(data.collectedAmount);
-    if (typeof id !== "string" || typeof reference !== "string" || !Number.isInteger(amount)) {
+    const failed = body.event === "PAYMENT FAILED";
+    if (
+      typeof id !== "string" ||
+      typeof reference !== "string" ||
+      (!failed && (!Number.isInteger(amount) || typeof data.collectedCurrency !== "string"))
+    ) {
       return null;
     }
     return {
       providerTransactionId: id,
       reference,
-      status: mapStatus(typeof data.status === "string" ? data.status : undefined),
-      amountTzs: amount,
-      currency: typeof data.collectedCurrency === "string" ? data.collectedCurrency : "",
-      failureReason: typeof body.message === "string" && body.message ? body.message : undefined,
+      status: failed ? "FAILED" : mapStatus(typeof data.status === "string" ? data.status : undefined),
+      ...(Number.isInteger(amount) ? { amountTzs: amount } : {}),
+      ...(typeof data.collectedCurrency === "string" ? { currency: data.collectedCurrency } : {}),
+      failureReason:
+        (typeof data.message === "string" && data.message) ||
+        (typeof body.message === "string" && body.message) ||
+        undefined,
     };
   }
 

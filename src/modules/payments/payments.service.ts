@@ -228,7 +228,10 @@ export class PaymentsService {
     }
     await this.prisma.paymentWebhook.update({ where: { id: webhookId }, data: { paymentId: payment.id } });
 
-    if (parsed.amountTzs !== payment.amountTzs || parsed.currency !== payment.currency) {
+    if (
+      parsed.status !== "FAILED" &&
+      (parsed.amountTzs !== payment.amountTzs || parsed.currency !== payment.currency)
+    ) {
       await this.markWebhook(webhookId, payment.id, `Amount or currency mismatch: got ${parsed.amountTzs} ${parsed.currency}`);
       return "amount_mismatch";
     }

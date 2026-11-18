@@ -113,6 +113,7 @@ export function createWorkerApi(): Hono<ApiEnvironment> {
   const connectBody = z.object({
     subscriptionId: z.string().uuid(),
     clientMac: z.string().min(11).max(17),
+    clientIp: z.string().ip(),
     apMac: z.string().min(11).max(17),
     ssidName: z.string().max(64).default(""),
     radioId: z.union([z.literal(0), z.literal(1)]).default(0),
@@ -349,7 +350,7 @@ export function createWorkerApi(): Hono<ApiEnvironment> {
   publicRoutes.post("/connect", rateLimit(10, 60_000), async (context) => {
     const input = parseOrThrow(connectBody, await requestJson(context));
     const runtime = context.get("runtime");
-    return context.json(await new PublicService(runtime.prisma, runtime.omadaFactory).connect(input, clientIp(context)));
+    return context.json(await new PublicService(runtime.prisma, runtime.omadaFactory).connect(input));
   });
   v1.route("/public", publicRoutes);
 
@@ -549,6 +550,14 @@ export function createWorkerApi(): Hono<ApiEnvironment> {
   v1.route("/network", network);
 
   api.route("/api/v1", v1);
+
+  // Keep the legacy ClickPesa URL already used in merchant webhook settings working.
+  api.post("/api/payments/webhook/clickpesa", async (context) => {
+    const body = (await requestJsonOrEmpty(context)) as Record<string, unknown>;
+    const outcome = await new PaymentsService(context.get("runtime").prisma, context.get("runtime").paymentProviders)
+      .processWebhook("CLICKPESA", body);
+    return context.json({ outcome });
+  });
 
   api.get("/openapi.json", (context) => context.json(openApiDocument));
   api.get("/docs", () => new Response(docsHtml, { headers: { "content-type": "text/html; charset=utf-8" } }));

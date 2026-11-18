@@ -22,8 +22,8 @@ export interface NormalizedWebhook {
   providerTransactionId: string;
   reference: string;
   status: ProviderStatus;
-  amountTzs: number;
-  currency: string;
+  amountTzs?: number;
+  currency?: string;
   failureReason?: string;
 }
 

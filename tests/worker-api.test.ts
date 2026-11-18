@@ -104,4 +104,31 @@ describe("Cloudflare Worker API", () => {
 
     expect(response.headers.get("access-control-allow-origin")).toBe("https://portal.example");
   });
+
+  it("accepts ClickPesa webhooks at the legacy URL configured in the merchant dashboard", async () => {
+    const api = createWorkerApi();
+    const runtime = createRuntime("UTC");
+    const webhookCreate = vi.fn().mockResolvedValue({ id: "webhook-1" });
+    Object.assign(runtime.prisma, { paymentWebhook: { create: webhookCreate } });
+    runtime.paymentProviders.set("CLICKPESA", {
+      code: "CLICKPESA",
+      initiatePayment: vi.fn(),
+      verifyWebhook: vi.fn().mockReturnValue(false),
+      parseWebhook: vi.fn().mockReturnValue(null),
+    });
+
+    const response = await api.fetch(
+      new Request("https://api.example/api/payments/webhook/clickpesa", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ event: "PAYMENT RECEIVED" }),
+      }),
+      { runtime },
+    );
+
+    expect(response.status).toBe(401);
+    expect(webhookCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ providerCode: "CLICKPESA", signatureValid: false }) }),
+    );
+  });
 });

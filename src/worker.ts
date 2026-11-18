@@ -10,9 +10,11 @@ interface WorkerBindings extends Record<string, string | undefined> {
 }
 
 const api = createWorkerApi();
+let cachedPaymentProviders: ReturnType<typeof createProviders> | undefined;
 
 function createRuntime(bindings: WorkerBindings): WorkerRuntime {
   const env = loadEnv(bindings);
+  cachedPaymentProviders ??= createProviders(env);
   const prisma = new PrismaClient({
     adapter: new PrismaNeon({ connectionString: env.DATABASE_URL }),
   });
@@ -27,6 +29,10 @@ function createRuntime(bindings: WorkerBindings): WorkerRuntime {
             baseUrl: controllerUrl,
             operatorName,
             operatorPassword,
+            cloudflareAccess:
+              env.OMADA_ACCESS_CLIENT_ID && env.OMADA_ACCESS_CLIENT_SECRET
+                ? { clientId: env.OMADA_ACCESS_CLIENT_ID, clientSecret: env.OMADA_ACCESS_CLIENT_SECRET }
+                : undefined,
             paths:
               env.OMADA_LOGIN_PATH && env.OMADA_AUTHORIZE_PATH
                 ? { login: env.OMADA_LOGIN_PATH, authorize: env.OMADA_AUTHORIZE_PATH }
@@ -37,7 +43,7 @@ function createRuntime(bindings: WorkerBindings): WorkerRuntime {
   const runtime: WorkerRuntime = {
     env,
     prisma,
-    paymentProviders: createProviders(env),
+    paymentProviders: cachedPaymentProviders,
     omadaFactory,
     voucherKeys:
       env.VOUCHER_HMAC_KEY && env.VOUCHER_ENCRYPTION_KEY

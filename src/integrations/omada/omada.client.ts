@@ -33,6 +33,7 @@ export interface OmadaClientConfig {
   verifySsl?: boolean;
   timeoutMs?: number;
   maxRetries?: number;
+  cloudflareAccess?: { clientId: string; clientSecret: string };
   paths?: { login: string; authorize: string };
   fetchImpl?: typeof fetch;
   sleep?: (ms: number) => Promise<void>;
@@ -68,6 +69,7 @@ export class OmadaClient {
   private readonly timeoutMs: number;
   private readonly maxRetries: number;
   private readonly paths: { login: string; authorize: string };
+  private readonly accessHeaders: Record<string, string>;
 
   constructor(private readonly config: OmadaClientConfig) {
     this.fetchImpl = config.fetchImpl ?? fetch;
@@ -75,6 +77,12 @@ export class OmadaClient {
     this.timeoutMs = config.timeoutMs ?? 10_000;
     this.maxRetries = config.maxRetries ?? 3;
     this.paths = config.paths ?? DEFAULT_PATHS;
+    this.accessHeaders = config.cloudflareAccess
+      ? {
+          "CF-Access-Client-Id": config.cloudflareAccess.clientId,
+          "CF-Access-Client-Secret": config.cloudflareAccess.clientSecret,
+        }
+      : {};
   }
 
   /** Authenticates as a Hotspot Operator (not a controller administrator). */
@@ -148,7 +156,7 @@ export class OmadaClient {
     path: string,
     options: { method: "POST"; body: unknown; authenticated?: boolean },
   ): Promise<Response> {
-    const headers: Record<string, string> = { "content-type": "application/json" };
+    const headers: Record<string, string> = { "content-type": "application/json", ...this.accessHeaders };
     if (options.authenticated && this.session) {
       headers.cookie = this.session.cookie;
       headers["Csrf-Token"] = this.session.csrfToken;

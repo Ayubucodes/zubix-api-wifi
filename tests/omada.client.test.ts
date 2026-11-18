@@ -49,6 +49,31 @@ describe("OmadaClient", () => {
     expect(body).toMatchObject({ clientMac: baseInput.clientMac, authType: 4, radioId: 1, ssidName: "Zubix" });
   });
 
+  it("sends Cloudflare Access service-token headers to the controller", async () => {
+    const calls: Array<{ init: RequestInit }> = [];
+    const fetchImpl = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+      calls.push({ init: init ?? {} });
+      return calls.length === 1 ? loginResponse() : okResponse();
+    }) as unknown as typeof fetch;
+    const client = new OmadaClient({
+      baseUrl: "https://omada.example.com",
+      operatorName: "hotspot-op",
+      operatorPassword: "pw",
+      cloudflareAccess: { clientId: "access-id", clientSecret: "access-secret" },
+      fetchImpl,
+      sleep: async () => undefined,
+    });
+
+    await client.authorizeClient(baseInput);
+
+    for (const call of calls) {
+      expect(call.init.headers).toMatchObject({
+        "CF-Access-Client-Id": "access-id",
+        "CF-Access-Client-Secret": "access-secret",
+      });
+    }
+  });
+
   it("retries transient 5xx responses with backoff", async () => {
     const responses = [new Response("", { status: 503 }), loginResponse(), new Response("", { status: 502 }), okResponse()];
     const fetchImpl = vi.fn(async () => responses.shift() as Response) as unknown as typeof fetch;

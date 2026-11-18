@@ -23,6 +23,7 @@ const envSchema = z.object({
   MOCK_WEBHOOK_SECRET: z.string().min(16).optional(),
   CLICKPESA_BASE_URL: z.string().url().optional(),
   CLICKPESA_CLIENT_ID: z.string().optional(),
+  CLICKPESA_API_KEY: z.string().optional(),
   CLICKPESA_CLIENT_SECRET: z.string().optional(),
   CLICKPESA_CHECKSUM_SECRET: z.string().optional(),
   APP_NAME: z.string().default("Zubix WiFi"),
@@ -32,6 +33,16 @@ const envSchema = z.object({
   OMADA_PASSWORD: z.string().optional(),
   OMADA_LOGIN_PATH: z.string().optional(),
   OMADA_AUTHORIZE_PATH: z.string().optional(),
+  OMADA_ACCESS_CLIENT_ID: z.string().optional(),
+  OMADA_ACCESS_CLIENT_SECRET: z.string().optional(),
+}).superRefine((env, context) => {
+  if (Boolean(env.OMADA_ACCESS_CLIENT_ID) !== Boolean(env.OMADA_ACCESS_CLIENT_SECRET)) {
+    context.addIssue({
+      code: "custom",
+      path: ["OMADA_ACCESS_CLIENT_SECRET"],
+      message: "OMADA_ACCESS_CLIENT_ID and OMADA_ACCESS_CLIENT_SECRET must be set together",
+    });
+  }
 });
 
 export type AppEnv = z.infer<typeof envSchema>;
