@@ -16,30 +16,15 @@ export interface ActivationInput {
 }
 
 /**
- * Creates an ACTIVE subscription and applies the stacking policy. Must be called inside the
- * same transaction that claims the payment or voucher, so activation and claim succeed or fail together.
- *
- * Network authorization (Omada) is NOT done here: the device MAC is not known from a payment
- * alone. That step belongs to the captive portal flow, which is not built yet.
+ * Creates an ACTIVE subscription for exactly the package duration. Must be called inside the same
+ * transaction that claims the payment or voucher, so activation and claim succeed or fail together.
  */
 export async function activateSubscription(tx: Tx, input: ActivationInput) {
   const now = input.now ?? new Date();
   const locationId = await resolvePackageLocation(tx, input.packageId);
 
-  const current = await tx.subscription.findFirst({
-    where: {
-      customerId: input.customerId,
-      locationId,
-      status: "ACTIVE",
-      expiresAt: { gt: now },
-    },
-    orderBy: { expiresAt: "desc" },
-    select: { expiresAt: true },
-  });
-
   const window = computeSubscriptionWindow({
     now,
-    currentExpiresAt: current?.expiresAt ?? null,
     durationMs: durationToMs(input.durationValue, input.durationUnit),
   });
 
@@ -62,11 +47,11 @@ export async function activateSubscription(tx: Tx, input: ActivationInput) {
       subscriptionId: subscription.id,
       fromStatus: null,
       toStatus: "ACTIVE",
-      reason: window.stacked ? "Activated, stacked after existing time" : "Activated",
+      reason: "Activated",
     },
   });
 
-  return { subscription, stacked: window.stacked };
+  return { subscription };
 }
 
 /** Uses the package's first linked location, otherwise the first active location. */

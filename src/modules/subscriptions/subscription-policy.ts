@@ -1,11 +1,6 @@
 /**
  * Pure time rules for subscriptions. No database or network access, so they are unit-tested.
  *
- * Stacking policy (documented decision):
- *  - If the customer still has time left on an active subscription for the same location,
- *    the new package is appended to the end of that time (no time is lost).
- *  - Otherwise the package starts now.
- *
  * MONTH is 30 days. Calendar months would make a "1 month" package length depend on the date,
  * which is hard for customers to predict. Change this only as a deliberate product decision.
  */
@@ -29,23 +24,17 @@ export function durationToMs(value: number, unit: DurationUnit): number {
 
 export interface ExpiryInput {
   now: Date;
-  /** Expiry of the customer's current active subscription at the same location, if any. */
-  currentExpiresAt: Date | null;
   durationMs: number;
 }
 
 export interface ExpiryResult {
   startsAt: Date;
   expiresAt: Date;
-  stacked: boolean;
 }
 
-export function computeSubscriptionWindow({ now, currentExpiresAt, durationMs }: ExpiryInput): ExpiryResult {
-  const stacked = currentExpiresAt !== null && currentExpiresAt.getTime() > now.getTime();
-  const startsAt = stacked && currentExpiresAt ? currentExpiresAt : now;
+export function computeSubscriptionWindow({ now, durationMs }: ExpiryInput): ExpiryResult {
   return {
-    startsAt,
-    expiresAt: new Date(startsAt.getTime() + durationMs),
-    stacked,
+    startsAt: now,
+    expiresAt: new Date(now.getTime() + durationMs),
   };
 }
