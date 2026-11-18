@@ -131,6 +131,8 @@ After a payment succeeds or a voucher is redeemed, the portal polls the payment 
 
 If `OMADA_CONTROLLER_URL`, `OMADA_USERNAME` and `OMADA_PASSWORD` are not set, the endpoint answers `NOT_CONFIGURED` and the portal tells the customer to ask staff. Nothing is faked.
 
+If the portal says it could not connect a paid device, check Admin > Network > Recent events for the safe controller HTTP status or error code. Failed authorization details are also attached to the subscription when an active network site is mapped to its location. Retrying connection from the paid portal does not initiate another payment.
+
 ## Cloudflare Worker reachability
 
 The Worker must be able to reach `OMADA_CONTROLLER_URL` over HTTPS. A controller

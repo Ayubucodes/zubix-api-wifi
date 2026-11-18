@@ -117,11 +117,35 @@ export class PublicService {
         uploadRateLimitKbps: sub.package.uploadKbps ?? undefined,
       });
     } catch (error) {
-      const detail = error instanceof OmadaError ? `Omada error ${error.controllerErrorCode ?? error.status ?? ""}`.trim() : "Controller unreachable";
+      const detail = getOmadaFailureDetail(error);
       await record("FAILED", detail);
+      await this.prisma.networkEvent.create({
+        data: {
+          networkSiteId: site?.id ?? null,
+          type: "OMADA_AUTHORIZATION_FAILED",
+          severity: "ERROR",
+          message: site
+            ? detail
+            : `${detail}; no active network site is mapped to this pass's location.`,
+          metadata: {
+            controllerStatus: error instanceof OmadaError ? error.status ?? null : null,
+            controllerErrorCode: error instanceof OmadaError ? error.controllerErrorCode ?? null : null,
+            networkSiteConfigured: Boolean(site),
+          },
+        },
+      });
       throw AppError.badGateway("We could not connect your device. Try again, or ask staff for help.");
     }
     await record("AUTHORIZED", null);
     return { status: "AUTHORIZED", expiresAt: sub.expiresAt.toISOString() };
   }
+}
+
+function getOmadaFailureDetail(error: unknown): string {
+  if (!(error instanceof OmadaError)) return "Omada controller unreachable";
+  if (error.controllerErrorCode !== undefined) {
+    return `Omada rejected the request (controller error ${error.controllerErrorCode})`;
+  }
+  if (error.status !== undefined) return `Omada returned HTTP ${error.status}`;
+  return "Omada request failed before receiving a controller response";
 }
