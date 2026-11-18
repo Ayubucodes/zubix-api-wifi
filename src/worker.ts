@@ -1,7 +1,7 @@
 import { PrismaNeon } from "@prisma/adapter-neon";
 import { PrismaClient } from "@prisma/client";
 import { createProviders } from "./integrations/payments/registry.js";
-import { OmadaClient } from "./integrations/omada/omada.client.js";
+import { buildOmadaControllerBaseUrl, OmadaClient } from "./integrations/omada/omada.client.js";
 import { loadEnv } from "./config/env.js";
 import { createWorkerApi, type WorkerRuntime } from "./worker-api.js";
 
@@ -20,13 +20,14 @@ function createRuntime(bindings: WorkerBindings): WorkerRuntime {
   });
 
   const controllerUrl = env.OMADA_CONTROLLER_URL;
+  const controllerId = env.OMADA_CONTROLLER_ID;
   const operatorName = env.OMADA_USERNAME;
   const operatorPassword = env.OMADA_PASSWORD;
   const omadaFactory =
-    controllerUrl && operatorName && operatorPassword
+    controllerUrl && controllerId && operatorName && operatorPassword
       ? () =>
           new OmadaClient({
-            baseUrl: controllerUrl,
+            baseUrl: buildOmadaControllerBaseUrl(controllerUrl, controllerId),
             operatorName,
             operatorPassword,
             cloudflareAccess:

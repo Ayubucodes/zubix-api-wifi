@@ -29,6 +29,7 @@ const envSchema = z.object({
   APP_NAME: z.string().default("Zubix WiFi"),
   SUPPORT_PHONE: z.string().optional(),
   OMADA_CONTROLLER_URL: z.string().url().optional(),
+  OMADA_CONTROLLER_ID: z.string().optional(),
   OMADA_USERNAME: z.string().optional(),
   OMADA_PASSWORD: z.string().optional(),
   OMADA_LOGIN_PATH: z.string().optional(),

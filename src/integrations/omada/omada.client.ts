@@ -3,9 +3,9 @@
  *
  * Source: TP-Link Omada support article 132060 (External Portal authentication).
  *
- * UNVERIFIED ON HARDWARE. The article lists the login path as "/api/v2/hotspot/login" and the
- * authorization path as "/api/v2/hotspot/extPortal/auth", but its own code samples swap them.
- * The paths below are therefore configurable. Confirm them on your controller before go-live.
+ * The controller ID is part of the base URL path, before these endpoint paths.
+ * The article's PHP samples swap the login and authorization URLs; the prose
+ * describes the endpoint paths used here.
  *
  * Open question: the article says `time` is the "expiration in milliseconds" without saying
  * whether it is an absolute epoch timestamp or a duration. This client sends the value the
@@ -50,6 +50,13 @@ export interface AuthorizeClientInput {
   totalTrafficLimitBytes?: number;
   downloadRateLimitKbps?: number;
   uploadRateLimitKbps?: number;
+}
+
+export function buildOmadaControllerBaseUrl(controllerUrl: string, controllerId: string): string {
+  const url = new URL(controllerUrl);
+  const basePath = url.pathname.replace(/\/+$/, "");
+  url.pathname = `${basePath}/${encodeURIComponent(controllerId)}`;
+  return url.toString().replace(/\/$/, "");
 }
 
 interface PortalSession {
@@ -133,6 +140,7 @@ export class OmadaClient {
       apMac: input.apMac,
       ssidName: input.ssidName,
       radioId: input.radioId,
+      originUrl: "",
     };
 
     let response = await this.request(this.paths.authorize, { method: "POST", body: payload, authenticated: true });

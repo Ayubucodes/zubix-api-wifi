@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import { OmadaClient, OmadaError } from "../src/integrations/omada/omada.client.js";
+import {
+  buildOmadaControllerBaseUrl,
+  OmadaClient,
+  OmadaError,
+} from "../src/integrations/omada/omada.client.js";
 
 function loginResponse(): Response {
   return new Response(JSON.stringify({ errorCode: 0, result: { token: "csrf-123" } }), {
@@ -22,6 +26,13 @@ const baseInput = {
 };
 
 describe("OmadaClient", () => {
+  it("adds the controller ID to the origin path", () => {
+    expect(buildOmadaControllerBaseUrl("https://omada.example.com/", "controller-id"))
+      .toBe("https://omada.example.com/controller-id");
+    expect(buildOmadaControllerBaseUrl("https://omada.example.com/proxy/", "controller-id"))
+      .toBe("https://omada.example.com/proxy/controller-id");
+  });
+
   it("calls the Worker fetch function with its required global receiver", async () => {
     const receivers: unknown[] = [];
     const fetchImpl = vi.fn(async function (this: unknown) {
@@ -65,7 +76,13 @@ describe("OmadaClient", () => {
     expect(headers["Csrf-Token"]).toBe("csrf-123");
 
     const body = JSON.parse(String(calls[1]?.init.body)) as Record<string, unknown>;
-    expect(body).toMatchObject({ clientMac: baseInput.clientMac, authType: 4, radioId: 1, ssidName: "Zubix" });
+    expect(body).toMatchObject({
+      clientMac: baseInput.clientMac,
+      authType: 4,
+      radioId: 1,
+      ssidName: "Zubix",
+      originUrl: "",
+    });
   });
 
   it("sends Cloudflare Access service-token headers to the controller", async () => {

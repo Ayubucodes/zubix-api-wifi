@@ -35,8 +35,11 @@ Protect that hostname with a Cloudflare Access **Service Auth** policy and a
 service token. Do not port-forward the controller's management interface to
 the public internet.
 
-Set `OMADA_CONTROLLER_URL` to the tunnel hostname's base URL (for example
-`https://omada-api.example.com`, without `/api/v2/hotspot/...`). Set
+Set `OMADA_CONTROLLER_URL` to the controller's origin (for example
+`https://omada-api.example.com`) and `OMADA_CONTROLLER_ID` to the Controller ID
+path segment. The Worker builds URLs as
+`https://omada-api.example.com/<controller-id>/api/v2/hotspot/...`; the
+Controller ID is not the Site ID. Set
 `OMADA_ACCESS_CLIENT_ID` and `OMADA_ACCESS_CLIENT_SECRET` to the service-token
 values as Worker secrets. The API sends those Access headers when it calls
 Omada. Also set `OMADA_USERNAME` and `OMADA_PASSWORD` to a dedicated Omada
@@ -75,27 +78,33 @@ assigned by the access point or gateway.
    **Hotspot Operator** account, not a controller administrator. The response
    carries a token, which is sent as the `Csrf-Token` header on later requests.
    The Controller also sets a session cookie: `TPOMADA_SESSIONID` (v5.11+) or
-   `TPEAP_SESSIONID` (older). Store it and send it back.
+   `TPEAP_SESSIONID` (older). Store it and send it back. Both endpoint URLs
+   include `/<controller-id>/` after the host.
 2. **Authorize client.** POST JSON with:
    - Common: `clientMac`, `clientIp`, `time` (expiration in ms), `authType`
      (always `4`), `totalTrafficLimitBytes`, `downloadRateLimitKbps`,
      `uploadRateLimitKbps`
    - Access point: `apMac`, `ssidName`, `radioId`
    - Gateway: `gatewayMac`, `vid`
+   - Access-point requests include `originUrl` (currently sent as `""`).
    - Success: `{"errorCode": 0}`
 
 ## Verify before go-live
 
-1. **Endpoint paths.** The article gives `/api/v2/hotspot/login` and
-   `/api/v2/hotspot/extPortal/auth`, but its code samples swap them. The
-   client takes both paths from configuration. Check on your controller which
-   path accepts login and which accepts authorization.
+1. **Controller ID and endpoint paths.** Get the Controller ID from the
+   controller URL path and set `OMADA_CONTROLLER_ID`; do not use the Site ID.
+   The article describes `/api/v2/hotspot/login` for login and
+   `/api/v2/hotspot/extPortal/auth` for authorization, although its PHP samples
+   swap those URLs. The client takes both endpoint paths from configuration.
 2. **Meaning of `time`.** The article says "expiration in milliseconds". It
    does not say whether this is an absolute epoch timestamp or a duration.
    Test one authorization with a short window and check the expiry on the
    controller.
-3. **Site identifier.** The article's examples don't show where the site ID goes
-   in the authorization call. Confirm whether the path or body needs it.
+3. **Site ID versus Controller ID.** The Site ID appears in the captive-portal
+   redirect, but is not listed in the documented authorization body. The
+   Controller ID belongs in the API URL path. A Zubix network-site mapping is
+   used to associate authorization history with a location; it is not sent to
+   the controller by this integration.
 4. **TLS.** The controller endpoint must use a certificate trusted by the
    Cloudflare Worker runtime. Do not disable certificate verification.
 5. **Session timeout.** The article describes no idle timeout. The only
@@ -129,7 +138,9 @@ the menu names on your controller version.
 
 After a payment succeeds or a voucher is redeemed, the portal polls the payment status (or redemption response) until it has the `subscriptionId`, then calls `POST /api/v1/public/connect` with the device details the controller put in the sign-in address (`clientMac`, `clientIp`, `apMac`, `ssidName`, `radioId`) and that subscription id. The API checks that the subscription is active, enforces the pass's device limit, then calls the controller's authorize endpoint for the remaining time. The captive portal must run this call; a payment webhook alone does not know which device to authorize.
 
-If `OMADA_CONTROLLER_URL`, `OMADA_USERNAME` and `OMADA_PASSWORD` are not set, the endpoint answers `NOT_CONFIGURED` and the portal tells the customer to ask staff. Nothing is faked.
+If `OMADA_CONTROLLER_URL`, `OMADA_CONTROLLER_ID`, `OMADA_USERNAME` or
+`OMADA_PASSWORD` are not set, the endpoint answers `NOT_CONFIGURED` and the
+portal tells the customer to ask staff. Nothing is faked.
 
 If the portal says it could not connect a paid device, check Admin > Network > Recent events for the safe controller HTTP status or error code. Failed authorization details are also attached to the subscription when an active network site is mapped to its location. Retrying connection from the paid portal does not initiate another payment.
 

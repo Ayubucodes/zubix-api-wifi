@@ -126,7 +126,7 @@ export class PublicService {
           severity: "ERROR",
           message: site
             ? detail
-            : `${detail}; no active network site is mapped to this pass's location.`,
+            : `${detail}. This attempt could not be linked to a Zubix network site because none is mapped to the pass's location.`,
           metadata: {
             controllerStatus: error instanceof OmadaError ? error.status ?? null : null,
             controllerErrorCode: error instanceof OmadaError ? error.controllerErrorCode ?? null : null,

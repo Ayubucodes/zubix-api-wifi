@@ -54,7 +54,8 @@ describe("PublicService Omada authorization", () => {
       data: expect.objectContaining({
         type: "OMADA_AUTHORIZATION_FAILED",
         severity: "ERROR",
-        message: "Omada returned HTTP 404; no active network site is mapped to this pass's location.",
+        message:
+          "Omada returned HTTP 404. This attempt could not be linked to a Zubix network site because none is mapped to the pass's location.",
         metadata: {
           controllerStatus: 404,
           controllerErrorCode: null,

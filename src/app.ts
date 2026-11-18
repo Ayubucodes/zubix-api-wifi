@@ -22,7 +22,7 @@ import { networkRoutes } from "./modules/network/network.routes.js";
 import { reportsRoutes } from "./modules/reports/reports.routes.js";
 import { settingsRoutes } from "./modules/settings/settings.routes.js";
 import { publicRoutes } from "./modules/public/public.routes.js";
-import { OmadaClient } from "./integrations/omada/omada.client.js";
+import { buildOmadaControllerBaseUrl, OmadaClient } from "./integrations/omada/omada.client.js";
 import { createProviders } from "./integrations/payments/registry.js";
 import type { PaymentProvider, ProviderCode } from "./integrations/payments/payment.types.js";
 import type { VoucherKeys } from "./modules/vouchers/vouchers.service.js";
@@ -89,10 +89,10 @@ export async function buildApp({ env, prisma, logger = true }: BuildAppOptions):
   app.decorate("appEnv", env.APP_ENV);
   app.decorate(
     "omadaFactory",
-    env.OMADA_CONTROLLER_URL && env.OMADA_USERNAME && env.OMADA_PASSWORD
+    env.OMADA_CONTROLLER_URL && env.OMADA_CONTROLLER_ID && env.OMADA_USERNAME && env.OMADA_PASSWORD
       ? () =>
           new OmadaClient({
-            baseUrl: env.OMADA_CONTROLLER_URL as string,
+            baseUrl: buildOmadaControllerBaseUrl(env.OMADA_CONTROLLER_URL as string, env.OMADA_CONTROLLER_ID as string),
             operatorName: env.OMADA_USERNAME as string,
             operatorPassword: env.OMADA_PASSWORD as string,
             cloudflareAccess:
