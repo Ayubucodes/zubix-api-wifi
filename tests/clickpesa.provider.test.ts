@@ -86,10 +86,10 @@ describe("ClickPesaProvider", () => {
     });
   });
 
-  it("preserves ClickPesa's documented initiation rejection reason", async () => {
+  it("preserves a sanitized ClickPesa initiation rejection reason", async () => {
     const fetchImpl = vi.fn(async (url: string | URL | Request) => {
       if (String(url).endsWith("/generate-token")) return jsonResponse({ success: true, token: "Bearer t" });
-      return jsonResponse({ message: "Invalid / unsupported phone number" }, 400);
+      return jsonResponse({ message: "Checksum validation failed for 255712345678" }, 400);
     }) as unknown as typeof fetch;
     const provider = new ClickPesaProvider({
       baseUrl: "https://api.clickpesa.com/third-parties",
@@ -103,7 +103,7 @@ describe("ClickPesaProvider", () => {
     ).rejects.toMatchObject({
       name: "ClickPesaError",
       status: 400,
-      message: "ClickPesa rejected the USSD push request (HTTP 400): Invalid / unsupported phone number",
+      message: "ClickPesa rejected the USSD push request (HTTP 400): Checksum validation failed for [redacted phone]",
     });
   });
 

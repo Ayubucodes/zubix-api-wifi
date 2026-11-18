@@ -197,21 +197,12 @@ function mapStatus(raw: string | undefined): ProviderStatus {
 
 function getInitiationErrorMessage(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
-  const message = value.trim();
-  const documentedMessages = [
-    "Invalid / unsupported phone number",
-    "Valid Client ID is required",
-    "Application has no access to COLLECTION API feature. Enable it on your application.",
-    "Invalid Order Reference, should only contain alphanumeric characters and cannot be blank",
-    "Order Reference should be less than or equal to 20 characters",
-    "Account has no payment collection methods",
-    "Account has no valid payment method",
-    "Unauthorized",
-    "Error validating fee, try again later",
-  ];
-  if (documentedMessages.includes(message)) return message;
-  if (/^Order reference .+ already used: Create a different reference$/i.test(message)) {
-    return "Order reference was already used; create a different reference.";
-  }
-  return undefined;
+  const message = value
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\bBearer\s+\S+/gi, "Bearer [redacted]")
+    .replace(/\b(api[-_ ]?key|secret|token|password)\b\s*[:=]\s*[^\s,;]+/gi, "$1=[redacted]")
+    .replace(/\b(?:\+?255)?\d{9,12}\b/g, "[redacted phone]")
+    .replace(/\b[A-Za-z0-9_-]{32,}\b/g, "[redacted]");
+  return message ? message.slice(0, 240) : undefined;
 }
