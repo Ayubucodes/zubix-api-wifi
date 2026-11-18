@@ -27,7 +27,7 @@ Fastify route modules when changing API behavior.
    Use Neon's pooled `DATABASE_URL` for the Worker. Set optional integration secrets the same
    way if those features are enabled. For ClickPesa, set `CLICKPESA_BASE_URL`
    to `https://api.clickpesa.com/third-parties` in `vars`, then add
-   `CLICKPESA_CLIENT_ID`, `CLICKPESA_API_KEY`, and `CLICKPESA_CHECKSUM_SECRET`
+   `CLICKPESA_CLIENT_ID`, `CLICKPESA_API_KEY`, and `CLICKPESA_CHECKSUM_SECREtT`
    as Worker secrets. For Omada, add `OMADA_CONTROLLER_URL`, `OMADA_USERNAME`,
    `OMADA_PASSWORD`, `OMADA_ACCESS_CLIENT_ID`, and
    `OMADA_ACCESS_CLIENT_SECRET` as secrets when using the protected Cloudflare
