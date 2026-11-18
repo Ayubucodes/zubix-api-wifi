@@ -93,6 +93,13 @@ Omada redirect. Do not treat a successful initiation response as proof of
 payment. ClickPesa has no sandbox, so testing this flow sends a real production
 payment prompt; use your own phone and a low-priced package.
 
+The API cannot check a customer's mobile-money balance before asking ClickPesa
+to initiate the payment. If ClickPesa rejects a push because the wallet has
+insufficient funds, the initiation endpoint returns a customer-friendly error
+and includes the failed payment reference in `error.details.reference`. The
+portal should show that message and let the customer top up or use another
+number; it must not claim the payment succeeded.
+
 ## Selcom (NOT implemented)
 
 The only documentation found was a third-party Node.js SDK

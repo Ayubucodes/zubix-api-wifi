@@ -147,6 +147,16 @@ export class PaymentsService {
           data: { paymentId: payment.id, operation: "INITIATE", succeeded: false, errorMessage: reason },
         }),
       ]);
+      const insufficientWalletFunds =
+        providerCode === "CLICKPESA" && /insufficient funds.*halo\s?pesa/i.test(reason);
+      if (insufficientWalletFunds) {
+        throw new AppError(
+          502,
+          "UPSTREAM_ERROR",
+          "The mobile-money wallet for this phone number appears to have insufficient funds. Top it up or try another number.",
+          { reference: payment.reference },
+        );
+      }
       throw AppError.badGateway("The payment provider could not start the payment. Please try again.");
     }
 
