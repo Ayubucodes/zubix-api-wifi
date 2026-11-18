@@ -86,6 +86,27 @@ describe("ClickPesaProvider", () => {
     });
   });
 
+  it("preserves ClickPesa's documented initiation rejection reason", async () => {
+    const fetchImpl = vi.fn(async (url: string | URL | Request) => {
+      if (String(url).endsWith("/generate-token")) return jsonResponse({ success: true, token: "Bearer t" });
+      return jsonResponse({ message: "Invalid / unsupported phone number" }, 400);
+    }) as unknown as typeof fetch;
+    const provider = new ClickPesaProvider({
+      baseUrl: "https://api.clickpesa.com/third-parties",
+      clientId: "c",
+      apiKey: "k",
+      fetchImpl,
+    });
+
+    await expect(
+      provider.initiatePayment({ reference: "ZBX9", amountTzs: 500, phoneNumber: "255712345678" }),
+    ).rejects.toMatchObject({
+      name: "ClickPesaError",
+      status: 400,
+      message: "ClickPesa rejected the USSD push request (HTTP 400): Invalid / unsupported phone number",
+    });
+  });
+
   it("refuses order references longer than 20 characters or non-alphanumeric", async () => {
     const provider = new ClickPesaProvider({ baseUrl: "x", clientId: "c", apiKey: "k", fetchImpl: vi.fn() as unknown as typeof fetch });
     await expect(provider.initiatePayment({ reference: "ZBX-1", amountTzs: 1, phoneNumber: "255712345678" })).rejects.toBeInstanceOf(

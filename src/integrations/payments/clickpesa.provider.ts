@@ -88,9 +88,18 @@ export class ClickPesaProvider implements PaymentProvider {
       body: JSON.stringify(payload),
       signal: AbortSignal.timeout(15_000),
     });
-    const body = (await response.json().catch(() => ({}))) as { id?: string; status?: string };
+    const body = (await response.json().catch(() => ({}))) as {
+      id?: string;
+      status?: string;
+      message?: unknown;
+    };
     if (!response.ok || !body.id) {
-      throw new ClickPesaError("ClickPesa rejected the USSD push request", response.status);
+      const providerMessage = getInitiationErrorMessage(body.message);
+      const reason = response.ok ? "unexpected response" : `HTTP ${response.status}`;
+      throw new ClickPesaError(
+        `ClickPesa rejected the USSD push request (${reason})${providerMessage ? `: ${providerMessage}` : ""}`,
+        response.status,
+      );
     }
     return { providerTransactionId: body.id, status: mapStatus(body.status) };
   }
@@ -184,4 +193,25 @@ function mapStatus(raw: string | undefined): ProviderStatus {
     default:
       return "PENDING";
   }
+}
+
+function getInitiationErrorMessage(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const message = value.trim();
+  const documentedMessages = [
+    "Invalid / unsupported phone number",
+    "Valid Client ID is required",
+    "Application has no access to COLLECTION API feature. Enable it on your application.",
+    "Invalid Order Reference, should only contain alphanumeric characters and cannot be blank",
+    "Order Reference should be less than or equal to 20 characters",
+    "Account has no payment collection methods",
+    "Account has no valid payment method",
+    "Unauthorized",
+    "Error validating fee, try again later",
+  ];
+  if (documentedMessages.includes(message)) return message;
+  if (/^Order reference .+ already used: Create a different reference$/i.test(message)) {
+    return "Order reference was already used; create a different reference.";
+  }
+  return undefined;
 }
